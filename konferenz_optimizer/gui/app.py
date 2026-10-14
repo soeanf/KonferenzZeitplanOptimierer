@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import queue
+import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -72,6 +73,24 @@ class App(tk.Tk):
     def _toggle_theme(self) -> None:
         if sv_ttk:
             sv_ttk.toggle_theme()
+            self._apply_titlebar_theme()
+
+    def _apply_titlebar_theme(self) -> None:
+        """Passt die Windows-Titelleiste (DWM) an das aktuelle Theme an."""
+        if sys.platform != "win32" or not sv_ttk:
+            return
+        import ctypes
+
+        self.update_idletasks()
+        hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
+        dark = ctypes.c_int(1 if sv_ttk.get_theme() == "dark" else 0)
+        # 20 = DWMWA_USE_IMMERSIVE_DARK_MODE (19 bei aelteren Windows-10-Builds)
+        for attr in (20, 19):
+            if ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(dark), ctypes.sizeof(dark)) == 0:
+                break
+        # Neuzeichnen der Titelleiste erzwingen
+        self.withdraw()
+        self.deiconify()
 
     def show_step(self, i: int) -> None:
         self.step = max(0, min(i, len(self._pages) - 1))
