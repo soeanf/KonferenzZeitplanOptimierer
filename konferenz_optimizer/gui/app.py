@@ -365,6 +365,16 @@ class App(tk.Tk):
         ttk.Label(row, text="Zeitlimit (Sekunden):").pack(side="left")
         self.time_limit = tk.IntVar(value=30)
         ttk.Spinbox(row, from_=1, to=3600, textvariable=self.time_limit, width=6).pack(side="left", padx=10)
+        ttk.Label(
+            form,
+            text=(
+                "Maximale Rechenzeit. Meist ist der beste Plan nach wenigen Sekunden gefunden. Das Limit greift\n"
+                "nur bei sehr großen Datensätzen, bei denen der Nachweis, dass es nicht besser geht,\n"
+                "lange dauern kann. Wird es erreicht, erhältst du den besten bis dahin gefundenen, gültigen Plan."
+            ),
+            foreground="gray",
+            justify="left",
+        ).pack(anchor="w", pady=(4, 0))
 
         self.progress = ttk.Progressbar(f, mode="indeterminate", length=360)
         self.progress.pack(anchor="w", pady=(20, 0))
