@@ -201,6 +201,9 @@ class App(tk.Tk):
         ttk.Label(right, text="Fächer im Überblick", font=("Segoe UI", 11, "bold")).grid(
             row=0, column=0, sticky="w", pady=(0, 8))
         self.s_tree = self._make_tree(right, ("fach", "n"), ("Fach", "Teilnehmer"), (150, 80), parent_grid=(1, 0))
+        self._s_sort = ("fach", False)  # (Spalte, absteigend)
+        for col in ("fach", "n"):
+            self.s_tree.heading(col, command=lambda c=col: self._sort_subjects(c))
         self.summary = ttk.Label(f, text="", foreground="gray")
         self.summary.pack(anchor="w", pady=(10, 0))
         return f
@@ -247,12 +250,33 @@ class App(tk.Tk):
             self.t_tree.insert("", "end", iid=name, values=values, tags=tags)
         self._refresh_subjects()
 
+    def _sort_subjects(self, col: str) -> None:
+        col_now, desc = self._s_sort
+        if col == col_now:
+            desc = not desc
+        else:
+            desc = col == "n"  # Teilnehmerzahl zuerst absteigend, Fachname aufsteigend
+        self._s_sort = (col, desc)
+        self._refresh_subjects()
+
     def _refresh_subjects(self) -> None:
         active = self._active_teachers()
         problem = problem_from_teachers(active)
+        col, desc = self._s_sort
+        rows = sorted(
+            ((fach, len(members)) for fach, members in problem.events.items()),
+            key=lambda r: r[0].casefold(),
+        )
+        if col == "n":
+            rows.sort(key=lambda r: r[1], reverse=desc)  # stabil: Gleichstand bleibt alphabetisch
+        elif desc:
+            rows.reverse()
         self.s_tree.delete(*self.s_tree.get_children())
-        for fach, members in sorted(problem.events.items()):
-            self.s_tree.insert("", "end", values=(fach, len(members)))
+        for row in rows:
+            self.s_tree.insert("", "end", values=row)
+        for c, title in (("fach", "Fach"), ("n", "Teilnehmer")):
+            arrow = (" ▼" if desc else " ▲") if c == col else ""
+            self.s_tree.heading(c, text=title + arrow)
         entries = sum(len(v) for v in active.values())
         n_active = len(self.teachers) - len(self.excluded)
         self.summary.configure(
