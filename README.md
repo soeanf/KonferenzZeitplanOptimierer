@@ -85,8 +85,9 @@ konferenz_optimizer/
   core/      Modell, Auswertung, Solver (solver_cpsat.py, solver_heur.py)
   adapters/  Eingabeformate (teacher_subjects.py: Lehrkraft → Fächer)
   cli.py     Kommandozeile
-  gui/       GUI (tkinter + sv-ttk)
+  gui/       GUI (tkinter + sv-ttk), Icons in gui/assets/
 tests/       Tests inkl. Zufallsinstanzen (Heuristik gegen CP-SAT)
+tools/       make_icon.py erzeugt die Icons (benötigt Pillow), icon.svg ist die Vektorvorlage
 ```
 
 Tests ausführen:

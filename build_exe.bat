@@ -10,12 +10,15 @@ if not exist .venv\Scripts\python.exe (
 )
 .venv\Scripts\python -m PyInstaller --noconfirm --clean --onefile --windowed ^
     --name Konferenzplaner ^
+    --icon konferenz_optimizer\gui\assets\icon.ico ^
+    --add-data "konferenz_optimizer\gui\assets;konferenz_optimizer\gui\assets" ^
     --collect-all ortools ^
     --collect-data sv_ttk ^
     run_gui.py
 if errorlevel 1 exit /b 1
 .venv\Scripts\python -m PyInstaller --noconfirm --onefile --console ^
     --name Konferenzplaner-cli ^
+    --icon konferenz_optimizer\gui\assets\icon.ico ^
     --collect-all ortools ^
     run_cli.py
 endlocal

@@ -5,6 +5,7 @@ import queue
 import sys
 import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from ..adapters.teacher_subjects import problem_from_teachers, read_teachers
@@ -18,6 +19,7 @@ except ImportError:  # optional: ohne Theme default-Look
 
 STEPS = ["1  Daten laden", "2  Daten prüfen", "3  Berechnen", "4  Ergebnis"]
 ERR = "#c42b1c"
+ASSETS = Path(__file__).parent / "assets"
 
 
 class App(tk.Tk):
@@ -26,6 +28,7 @@ class App(tk.Tk):
         self.title("Konferenzzeitplan-Optimierer")
         self.geometry("1100x720")
         self.minsize(900, 600)
+        self._set_icon()
         if sv_ttk:
             sv_ttk.set_theme("light")
         self.option_add("*Font", ("Segoe UI", 10))
@@ -42,6 +45,16 @@ class App(tk.Tk):
         self._build_chrome()
         self._pages = [self._page_load(), self._page_review(), self._page_solve(), self._page_result()]
         self.show_step(0)
+
+    def _set_icon(self) -> None:
+        try:
+            if sys.platform == "win32":
+                self.iconbitmap(default=str(ASSETS / "icon.ico"))
+            else:
+                self._icon = tk.PhotoImage(file=str(ASSETS / "icon.png"))
+                self.iconphoto(True, self._icon)
+        except tk.TclError:
+            pass  # fehlendes Icon darf den Start nicht verhindern
 
     # ---------- Geruest ----------
     def _build_chrome(self) -> None:
