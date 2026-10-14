@@ -22,9 +22,9 @@ def _normalize(subject: str) -> str:
     return " ".join(subject.split())
 
 
-def parse_rows(rows: list[list[str]]) -> Problem:
-    """Zeilen im Format Name,Fach1,Fach2[,Fach3,Fach4]; Kopfzeile wird erkannt."""
-    events: dict[str, set[str]] = {}
+def parse_teachers(rows: list[list[str]]) -> dict[str, list[str]]:
+    """Zeilen im Format Name,Fach1,Fach2[,Fach3,Fach4] -> Lehrer -> Faecher (in Reihenfolge)."""
+    teachers: dict[str, list[str]] = {}
     canonical: dict[str, str] = {}  # casefold -> erste Schreibweise
     rows = [r for r in rows if any(c.strip() for c in r)]
     if rows and rows[0][0].strip().casefold() == "name":
@@ -33,16 +33,34 @@ def parse_rows(rows: list[list[str]]) -> Problem:
         name = row[0].strip()
         if not name:
             raise ValueError(f"Zeile ohne Namen: {row}")
+        subjects = teachers.setdefault(name, [])
         for cell in row[1:]:
             subject = _normalize(cell)
             if subject:
                 subject = canonical.setdefault(subject.casefold(), subject)
-                events.setdefault(subject, set()).add(name)
+                if subject not in subjects:
+                    subjects.append(subject)
+    return teachers
+
+
+def problem_from_teachers(teachers: dict[str, list[str]]) -> Problem:
+    events: dict[str, set[str]] = {}
+    for name, subjects in teachers.items():
+        for subject in subjects:
+            events.setdefault(subject, set()).add(name)
     return Problem({e: frozenset(m) for e, m in events.items()}, Labels("Fach", "Lehrer"))
 
 
-def load_teacher_subjects(path: str | Path) -> Problem:
+def parse_rows(rows: list[list[str]]) -> Problem:
+    return problem_from_teachers(parse_teachers(rows))
+
+
+def read_teachers(path: str | Path) -> dict[str, list[str]]:
     text = _read_text(Path(path))
     first = text.splitlines()[0] if text.strip() else ""
     delimiter = ";" if first.count(";") > first.count(",") else ","
-    return parse_rows(list(csv.reader(io.StringIO(text), delimiter=delimiter)))
+    return parse_teachers(list(csv.reader(io.StringIO(text), delimiter=delimiter)))
+
+
+def load_teacher_subjects(path: str | Path) -> Problem:
+    return problem_from_teachers(read_teachers(path))

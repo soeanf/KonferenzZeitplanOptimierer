@@ -3,10 +3,13 @@ name = "konferenz-optimizer"
 version = "0.1.0"
 description = "Optimiert Konferenzzeitplaene (Fach-/Zeugniskonferenzen)"
 requires-python = ">=3.10"
-dependencies = ["ortools>=9.9"]
+dependencies = ["ortools>=9.9", "sv-ttk>=2.6"]
 
 [project.scripts]
 konferenz-optimizer = "konferenz_optimizer.cli:main"
+
+[project.gui-scripts]
+konferenz-optimizer-gui = "konferenz_optimizer.gui.app:main"
 
 [build-system]
 requires = ["setuptools>=64"]

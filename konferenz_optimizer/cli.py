@@ -66,6 +66,11 @@ def export(s: Schedule, path: str) -> None:
             w.writerow(["Slot", s.problem.labels.event])
             for i, evs in enumerate(s.slots, 1):
                 w.writerow([i, ", ".join(evs)])
+            w.writerow([])
+            n = len(s.slots)
+            w.writerow([s.problem.labels.participant, *[f"Slot {i + 1}" for i in range(n)], "Leerlauf", "Verpasst"])
+            for r in s.reports:
+                w.writerow([r.name, *["/".join(r.slots.get(i, [])) for i in range(n)], r.gaps, ", ".join(r.missed)])
 
 
 def main(argv: list[str] | None = None) -> int:

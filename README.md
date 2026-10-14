@@ -2,7 +2,7 @@
 
 Werkzeug, das Fachkonferenzen (später auch andere Konferenzarten) so auf Zeit-Slots verteilt, dass möglichst jede Lehrkraft an allen Konferenzen ihrer Fächer teilnehmen kann.
 
-> **Status:** Das Kommandozeilen-Tool ist einsatzbereit. Geplant sind noch eine GUI, eine Standalone-EXE und ein Adapter für Klassenkonferenzen. Der ursprüngliche Entwurf steht in [PLAN.md](PLAN.md).
+> **Status:** Kommandozeilen-Tool und GUI sind einsatzbereit. Geplant sind noch eine Standalone-EXE und ein Adapter für Klassenkonferenzen. Der ursprüngliche Entwurf steht in [PLAN.md](PLAN.md).
 
 ## Problem
 
@@ -19,7 +19,7 @@ Voraussetzung ist Python ab 3.10.
 
 ```
 python -m venv .venv
-.venv\Scripts\python -m pip install ortools pytest
+.venv\Scripts\python -m pip install ortools sv-ttk pytest
 ```
 
 ## Eingabe
@@ -31,6 +31,21 @@ CSV im Format `Name,Fach1,Fach2,Fach3,Fach4` (siehe [beispiel.csv](beispiel.csv)
 - Whitespace und Groß-/Kleinschreibung bei Fächern werden normalisiert.
 
 ## Verwendung
+
+### GUI
+
+```
+.venv\Scripts\python -m konferenz_optimizer.gui
+```
+
+Die Oberfläche führt in vier Schritten durch den Ablauf und bietet einen Hell/Dunkel-Schalter:
+
+1. **Daten laden:** CSV-Datei auswählen.
+2. **Daten prüfen:** Lehrkräfte und Fächer in einer Tabelle ansehen (mit Suchfeld). Einzelne Fächer lassen sich pro Lehrkraft abwählen, abgewählte Fächer werden nicht berücksichtigt. Abwahlen gelten nur für die laufende Sitzung und werden nicht in die CSV zurückgeschrieben.
+3. **Berechnen:** optionale Slot-Obergrenze, Ziel bei zu wenigen Slots und Zeitlimit festlegen. Die Berechnung läuft im Hintergrund.
+4. **Ergebnis:** Slots mit ihren Fächern und Plan pro Lehrkraft mit Leerlauf. Lehrkräfte mit verpassten Konferenzen sind rot markiert. Der Export erfolgt als CSV oder JSON.
+
+### Kommandozeile
 
 ```
 .venv\Scripts\python -m konferenz_optimizer beispiel.csv [Optionen]
@@ -48,6 +63,8 @@ Die Ausgabe enthält:
 - die Slot-Tabelle,
 - den Ablauf jeder Lehrkraft mit Leerlauf und verpassten Terminen,
 - Kennzahlen und Status (`optimal`, beste gefundene Lösung bei Zeitlimit oder `heuristisch`).
+
+Der CSV-Export enthält die Slot-Tabelle und den Plan pro Lehrkraft, der JSON-Export zusätzlich die Kennzahlen.
 
 ## Vorgehen
 
@@ -68,6 +85,7 @@ konferenz_optimizer/
   core/      Modell, Auswertung, Solver (solver_cpsat.py, solver_heur.py)
   adapters/  Eingabeformate (teacher_subjects.py: Lehrkraft → Fächer)
   cli.py     Kommandozeile
+  gui/       GUI (tkinter + sv-ttk)
 tests/       Tests inkl. Zufallsinstanzen (Heuristik gegen CP-SAT)
 ```
 
@@ -79,6 +97,5 @@ Tests ausführen:
 
 ## Geplant
 
-- GUI
 - Standalone-EXE (PyInstaller)
 - Adapter für Zeugniskonferenzen (Klasse → Lehrkräfte)
