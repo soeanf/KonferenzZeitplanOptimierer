@@ -33,6 +33,7 @@ class App(tk.Tk):
 
         self.teachers: dict[str, list[str]] = {}
         self.disabled: set[tuple[str, str]] = set()  # (Lehrer, Fach)
+        self.excluded: set[str] = set()  # komplett ausgenommene Lehrer
         self.schedule: Schedule | None = None
         self.path = ""
         self.step = 0
@@ -153,6 +154,7 @@ class App(tk.Tk):
             return
         self.teachers, self.path = teachers, path
         self.disabled.clear()
+        self.excluded.clear()
         self.schedule = None
         self._current_teacher = None
         subjects = {s for v in teachers.values() for s in v}
@@ -165,7 +167,7 @@ class App(tk.Tk):
         ttk.Label(f, text="Daten prüfen", font=("Segoe UI", 16, "bold")).pack(anchor="w")
         ttk.Label(
             f,
-            text="Lehrer auswählen und rechts einzelne Fächer abwählen – abgewählte Fächer werden nicht berücksichtigt.",
+            text="Lehrer per Klick auf ✓ ausnehmen oder rechts einzelne Fächer abwählen – sie werden nicht berücksichtigt.",
             foreground="gray",
         ).pack(anchor="w", pady=(2, 12))
 
@@ -180,10 +182,22 @@ class App(tk.Tk):
         self.search = tk.StringVar()
         self.search.trace_add("write", lambda *_: self._refresh_review())
         ttk.Entry(left, textvariable=self.search).pack(fill="x", pady=(0, 8))
-        self.t_tree = self._make_tree(left, ("name", "f1", "f2", "f3", "f4"),
-                                      ("Lehrer", "Fach 1", "Fach 2", "Fach 3", "Fach 4"), (170, 120, 120, 120, 120))
+        self.t_tree = self._make_tree(left, ("chk", "name", "f1", "f2", "f3", "f4"),
+                                      ("", "Lehrer", "Fach 1", "Fach 2", "Fach 3", "Fach 4"),
+                                      (36, 170, 120, 120, 120, 120))
+        self.t_tree.column("chk", width=36, stretch=False, anchor="center")
         self.t_tree.tag_configure("changed", foreground="#9a6700")
+        self.t_tree.tag_configure("excluded", foreground="#9a9a9a")
         self.t_tree.bind("<<TreeviewSelect>>", self._on_teacher_select)
+        self.t_tree.bind("<Button-1>", self._on_tree_click, add="+")
+        self.t_tree.bind("<space>", self._on_space)
+
+        bulk = ttk.Frame(left)
+        bulk.pack(fill="x", pady=(8, 0), before=self.t_tree.master)
+        ttk.Button(bulk, text="Alle", command=lambda: self._set_visible(True)).pack(side="left")
+        ttk.Button(bulk, text="Keine", command=lambda: self._set_visible(False)).pack(side="left", padx=6)
+        ttk.Button(bulk, text="Umkehren", command=self._invert_visible).pack(side="left")
+        ttk.Label(bulk, text="gilt für die angezeigten Lehrer", foreground="gray").pack(side="left", padx=12)
 
         right = ttk.Frame(main)
         right.grid(row=0, column=1, sticky="nsew")
@@ -214,6 +228,22 @@ class App(tk.Tk):
         sb.pack(side="right", fill="y")
         return tree
 
+    def _row_values(self, name: str) -> tuple[tuple, tuple]:
+        subjects = self.teachers[name]
+        cells = [(OFF if (name, s) in self.disabled else "") + s for s in subjects[:4]]
+        cells += [""] * (4 - len(cells))
+        tags = []
+        if name in self.excluded:
+            tags.append("excluded")
+        elif any((name, s) in self.disabled for s in subjects):
+            tags.append("changed")
+        return ("✗" if name in self.excluded else "✓", name, *cells), tuple(tags)
+
+    def _update_row(self, name: str) -> None:
+        if self.t_tree.exists(name):
+            values, tags = self._row_values(name)
+            self.t_tree.item(name, values=values, tags=tags)
+
     def _refresh_review(self) -> None:
         keep = self._current_teacher
         query = self.search.get().strip().casefold()
@@ -221,10 +251,8 @@ class App(tk.Tk):
         for name, subjects in self.teachers.items():
             if query and query not in name.casefold() and not any(query in s.casefold() for s in subjects):
                 continue
-            cells = [(OFF if (name, s) in self.disabled else "") + s for s in subjects[:4]]
-            cells += [""] * (4 - len(cells))
-            changed = any((name, s) in self.disabled for s in subjects)
-            self.t_tree.insert("", "end", iid=name, values=(name, *cells), tags=("changed",) if changed else ())
+            values, tags = self._row_values(name)
+            self.t_tree.insert("", "end", iid=name, values=values, tags=tags)
         if keep and self.t_tree.exists(keep):
             self.t_tree.selection_set(keep)
         self._refresh_subjects()
@@ -236,10 +264,45 @@ class App(tk.Tk):
         for fach, members in sorted(problem.events.items()):
             self.s_tree.insert("", "end", values=(fach, len(members)))
         entries = sum(len(v) for v in active.values())
+        n_active = len(self.teachers) - len(self.excluded)
         self.summary.configure(
-            text=f"{len(self.teachers)} Lehrer · {len(problem.events)} Fächer · {entries} Teilnahmen"
-            + (f" · {len(self.disabled)} abgewählt" if self.disabled else "")
+            text=f"{n_active} von {len(self.teachers)} Lehrern aktiv · {len(problem.events)} Fächer · {entries} Teilnahmen"
+            + (f" · {len(self.disabled)} Fächer abgewählt" if self.disabled else "")
         )
+
+    def _on_tree_click(self, event) -> None:
+        if self.t_tree.identify_region(event.x, event.y) == "cell" and self.t_tree.identify_column(event.x) == "#1":
+            row = self.t_tree.identify_row(event.y)
+            if row:
+                self._toggle_teacher(row)
+
+    def _on_space(self, _event=None) -> str:
+        for name in self.t_tree.selection():
+            self._toggle_teacher(name)
+        return "break"
+
+    def _toggle_teacher(self, name: str) -> None:
+        self.excluded.symmetric_difference_update({name})
+        self._teachers_changed([name])
+
+    def _set_visible(self, include: bool) -> None:
+        names = list(self.t_tree.get_children())
+        if include:
+            self.excluded.difference_update(names)
+        else:
+            self.excluded.update(names)
+        self._teachers_changed(names)
+
+    def _invert_visible(self) -> None:
+        names = list(self.t_tree.get_children())
+        self.excluded.symmetric_difference_update(names)
+        self._teachers_changed(names)
+
+    def _teachers_changed(self, names: list[str]) -> None:
+        self.schedule = None
+        for name in names:
+            self._update_row(name)
+        self._refresh_subjects()
 
     def _on_teacher_select(self, _event=None) -> None:
         sel = self.t_tree.selection()
@@ -266,12 +329,14 @@ class App(tk.Tk):
         else:
             self.disabled.add(key)
         self.schedule = None
-        self._refresh_review()
+        self._update_row(name)
+        self._refresh_subjects()
 
     def _active_teachers(self) -> dict[str, list[str]]:
         return {
             n: [s for s in subs if (n, s) not in self.disabled]
             for n, subs in self.teachers.items()
+            if n not in self.excluded
         }
 
     # ---------- Schritt 3: Berechnen ----------

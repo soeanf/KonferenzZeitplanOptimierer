@@ -41,7 +41,7 @@ CSV im Format `Name,Fach1,Fach2,Fach3,Fach4` (siehe [beispiel.csv](beispiel.csv)
 Die Oberfläche führt in vier Schritten durch den Ablauf und bietet einen Hell/Dunkel-Schalter:
 
 1. **Daten laden:** CSV-Datei auswählen.
-2. **Daten prüfen:** Lehrkräfte und Fächer in einer Tabelle ansehen (mit Suchfeld). Einzelne Fächer lassen sich pro Lehrkraft abwählen, abgewählte Fächer werden nicht berücksichtigt. Abwahlen gelten nur für die laufende Sitzung und werden nicht in die CSV zurückgeschrieben.
+2. **Daten prüfen:** Lehrkräfte und Fächer in einer Tabelle ansehen (mit Suchfeld). Einzelne Lehrkräfte lassen sich per Klick auf das ✓ bzw. ✗ vor dem Namen (oder mit der Leertaste) komplett von der Berechnung ausnehmen, die Schaltflächen „Alle“, „Keine“ und „Umkehren“ wirken auf die gerade angezeigten Lehrkräfte. Zusätzlich lassen sich einzelne Fächer pro Lehrkraft abwählen. Abwahlen gelten nur für die laufende Sitzung und werden nicht in die CSV zurückgeschrieben.
 3. **Berechnen:** optionale Slot-Obergrenze, Ziel bei zu wenigen Slots und Zeitlimit festlegen. Die Berechnung läuft im Hintergrund.
 4. **Ergebnis:** Slots mit ihren Fächern und Plan pro Lehrkraft mit Leerlauf. Lehrkräfte mit verpassten Konferenzen sind rot markiert. Der Export erfolgt als CSV oder JSON.
 
