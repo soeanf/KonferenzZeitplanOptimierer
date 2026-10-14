@@ -2,7 +2,7 @@
 
 Werkzeug, das Fachkonferenzen (später auch andere Konferenzarten) so auf Zeit-Slots verteilt, dass möglichst jede Lehrkraft an allen Konferenzen ihrer Fächer teilnehmen kann.
 
-> **Status:** Kommandozeilen-Tool und GUI sind einsatzbereit. Geplant sind noch eine Standalone-EXE und ein Adapter für Klassenkonferenzen. Der ursprüngliche Entwurf steht in [PLAN.md](PLAN.md).
+> **Status:** Kommandozeilen-Tool, GUI und Standalone-EXE sind einsatzbereit. Geplant ist noch ein Adapter für Klassenkonferenzen. Der ursprüngliche Entwurf steht in [PLAN.md](PLAN.md).
 
 ## Problem
 
@@ -95,7 +95,17 @@ Tests ausführen:
 .venv\Scripts\python -m pytest
 ```
 
+## Standalone-EXE
+
+Für Rechner ohne Python lässt sich die GUI als einzelne EXE bauen:
+
+```
+.venv\Scripts\python -m pip install pyinstaller
+build_exe.bat
+```
+
+Das Ergebnis liegt in `dist\Konferenzplaner.exe` (ca. 70 MB, enthält OR-Tools und Theme). Die EXE rechnet mit demselben Solver wie die Python-Variante, Ergebnis und Rechenzeit sind identisch. Beim Start wird sie zunächst in einen temporären Ordner entpackt, das kostet beim ersten Öffnen ein paar Sekunden. Da die EXE nicht signiert ist, kann Windows SmartScreen beim ersten Start warnen.
+
 ## Geplant
 
-- Standalone-EXE (PyInstaller)
 - Adapter für Zeugniskonferenzen (Klasse → Lehrkräfte)
