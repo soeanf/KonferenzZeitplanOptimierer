@@ -66,6 +66,11 @@ def export(s: Schedule, path: str) -> None:
             w.writerow(["Slot", s.problem.labels.event])
             for i, evs in enumerate(s.slots, 1):
                 w.writerow([i, ", ".join(evs)])
+            w.writerow([])
+            n = len(s.slots)
+            w.writerow([s.problem.labels.participant, *[f"Slot {i + 1}" for i in range(n)], "Leerlauf", "Verpasst"])
+            for r in s.reports:
+                w.writerow([r.name, *["/".join(r.slots.get(i, [])) for i in range(n)], r.gaps, ", ".join(r.missed)])
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -73,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("csv", help="CSV: Name,Fach1,Fach2,[Fach3,Fach4]")
     p.add_argument("--max-slots", type=int, help="maximale Anzahl hintereinander liegender Slots")
     p.add_argument("--objective", choices=OBJECTIVES, default="teilnehmer",
-                   help="teilnehmer: wenige betroffene Lehrer; verpasst: wenige verpasste Termine")
+                   help="teilnehmer: wenige betroffene Lehrer*innen; verpasst: wenige verpasste Termine")
     p.add_argument("--solver", choices=("cpsat", "heur"), default="cpsat")
     p.add_argument("--time-limit", type=float, default=30.0, help="Sekunden")
     p.add_argument("--out", help="Ergebnis in .csv oder .json speichern")
