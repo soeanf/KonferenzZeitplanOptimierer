@@ -97,14 +97,18 @@ Tests ausführen:
 
 ## Standalone-EXE
 
-Für Rechner ohne Python lässt sich die GUI als einzelne EXE bauen:
+Für Rechner ohne Python lassen sich GUI und Kommandozeile als einzelne EXE-Dateien bauen:
 
 ```
 .venv\Scripts\python -m pip install pyinstaller
 build_exe.bat
 ```
 
-Das Ergebnis liegt in `dist\Konferenzplaner.exe` (ca. 70 MB, enthält OR-Tools und Theme). Die EXE rechnet mit demselben Solver wie die Python-Variante, Ergebnis und Rechenzeit sind identisch. Beim Start wird sie zunächst in einen temporären Ordner entpackt, das kostet beim ersten Öffnen ein paar Sekunden. Da die EXE nicht signiert ist, kann Windows SmartScreen beim ersten Start warnen.
+Ergebnis in `dist\`:
+- `Konferenzplaner.exe` – die GUI (ca. 70 MB, enthält OR-Tools und Theme)
+- `Konferenzplaner-cli.exe` – die Kommandozeile mit denselben Optionen wie oben, z. B. `Konferenzplaner-cli.exe kollegium.csv --max-slots 6 --out plan.csv` (ca. 65 MB)
+
+Beide rechnen mit demselben Solver wie die Python-Variante, Ergebnis und Rechenzeit sind identisch. Beim Start wird die EXE zunächst in einen temporären Ordner entpackt, das kostet beim ersten Öffnen ein paar Sekunden. Da die EXEs nicht signiert sind, kann Windows SmartScreen beim ersten Start warnen.
 
 ## Geplant
 

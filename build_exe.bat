@@ -1,5 +1,7 @@
 @echo off
-rem Baut die GUI als einzelne EXE nach dist\Konferenzplaner.exe
+rem Baut GUI und CLI als einzelne EXE-Dateien nach dist\
+rem   dist\Konferenzplaner.exe      (GUI)
+rem   dist\Konferenzplaner-cli.exe  (Kommandozeile)
 setlocal
 cd /d "%~dp0"
 if not exist .venv\Scripts\python.exe (
@@ -11,4 +13,9 @@ if not exist .venv\Scripts\python.exe (
     --collect-all ortools ^
     --collect-data sv_ttk ^
     run_gui.py
+if errorlevel 1 exit /b 1
+.venv\Scripts\python -m PyInstaller --noconfirm --onefile --console ^
+    --name Konferenzplaner-cli ^
+    --collect-all ortools ^
+    run_cli.py
 endlocal
