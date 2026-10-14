@@ -2,7 +2,7 @@
 
 Werkzeug, das Fachkonferenzen (später auch andere Konferenzarten) so auf Zeit-Slots verteilt, dass möglichst jede Lehrkraft an allen Konferenzen ihrer Fächer teilnehmen kann.
 
-> **Status:** Kommandozeilen-Tool und GUI sind einsatzbereit. Geplant sind noch eine Standalone-EXE und ein Adapter für Klassenkonferenzen. Der ursprüngliche Entwurf steht in [PLAN.md](PLAN.md).
+> **Status:** Kommandozeilen-Tool, GUI und Standalone-EXE sind einsatzbereit. Geplant ist noch ein Adapter für Klassenkonferenzen. Der ursprüngliche Entwurf steht in [PLAN.md](PLAN.md).
 
 ## Problem
 
@@ -85,8 +85,9 @@ konferenz_optimizer/
   core/      Modell, Auswertung, Solver (solver_cpsat.py, solver_heur.py)
   adapters/  Eingabeformate (teacher_subjects.py: Lehrkraft → Fächer)
   cli.py     Kommandozeile
-  gui/       GUI (tkinter + sv-ttk)
+  gui/       GUI (tkinter + sv-ttk), Icons in gui/assets/
 tests/       Tests inkl. Zufallsinstanzen (Heuristik gegen CP-SAT)
+tools/       make_icon.py erzeugt die Icons (benötigt Pillow), icon.svg ist die Vektorvorlage
 ```
 
 Tests ausführen:
@@ -95,7 +96,21 @@ Tests ausführen:
 .venv\Scripts\python -m pytest
 ```
 
+## Standalone-EXE
+
+Für Rechner ohne Python lassen sich GUI und Kommandozeile als einzelne EXE-Dateien bauen:
+
+```
+.venv\Scripts\python -m pip install pyinstaller
+build_exe.bat
+```
+
+Ergebnis in `dist\`:
+- `Konferenzplaner.exe` – die GUI (ca. 70 MB, enthält OR-Tools und Theme)
+- `Konferenzplaner-cli.exe` – die Kommandozeile mit denselben Optionen wie oben, z. B. `Konferenzplaner-cli.exe kollegium.csv --max-slots 6 --out plan.csv` (ca. 65 MB)
+
+Beide rechnen mit demselben Solver wie die Python-Variante, Ergebnis und Rechenzeit sind identisch. Beim Start wird die EXE zunächst in einen temporären Ordner entpackt, das kostet beim ersten Öffnen ein paar Sekunden. Da die EXEs nicht signiert sind, kann Windows SmartScreen beim ersten Start warnen.
+
 ## Geplant
 
-- Standalone-EXE (PyInstaller)
 - Adapter für Zeugniskonferenzen (Klasse → Lehrkräfte)
