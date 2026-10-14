@@ -17,7 +17,6 @@ except ImportError:  # optional: ohne Theme default-Look
     sv_ttk = None
 
 STEPS = ["1  Daten laden", "2  Daten prüfen", "3  Berechnen", "4  Ergebnis"]
-OFF = "✗ "  # Praefix fuer abgewaehlte Faecher in der Tabelle
 ERR = "#c42b1c"
 
 
@@ -39,8 +38,6 @@ class App(tk.Tk):
         self.step = 0
         self._queue: queue.Queue = queue.Queue()
         self._busy = False
-        self._check_vars: dict[str, tk.BooleanVar] = {}
-        self._current_teacher: str | None = None
 
         self._build_chrome()
         self._pages = [self._page_load(), self._page_review(), self._page_solve(), self._page_result()]
@@ -156,7 +153,6 @@ class App(tk.Tk):
         self.disabled.clear()
         self.excluded.clear()
         self.schedule = None
-        self._current_teacher = None
         subjects = {s for v in teachers.values() for s in v}
         self.load_info.configure(text=f"{path}\n{len(teachers)} Lehrer · {len(subjects)} Fächer")
         self.show_step(1)
@@ -167,7 +163,7 @@ class App(tk.Tk):
         ttk.Label(f, text="Daten prüfen", font=("Segoe UI", 16, "bold")).pack(anchor="w")
         ttk.Label(
             f,
-            text="Lehrer per Klick auf ✓ ausnehmen oder rechts einzelne Fächer abwählen – sie werden nicht berücksichtigt.",
+            text="Per Klick auf ✓ bzw. ✗ Lehrer oder einzelne Fächer ausnehmen – ausgenommene Einträge werden nicht berücksichtigt.",
             foreground="gray",
         ).pack(anchor="w", pady=(2, 12))
 
@@ -188,7 +184,6 @@ class App(tk.Tk):
         self.t_tree.column("chk", width=36, stretch=False, anchor="center")
         self.t_tree.tag_configure("changed", foreground="#9a6700")
         self.t_tree.tag_configure("excluded", foreground="#9a9a9a")
-        self.t_tree.bind("<<TreeviewSelect>>", self._on_teacher_select)
         self.t_tree.bind("<Button-1>", self._on_tree_click, add="+")
         self.t_tree.bind("<space>", self._on_space)
 
@@ -201,13 +196,11 @@ class App(tk.Tk):
 
         right = ttk.Frame(main)
         right.grid(row=0, column=1, sticky="nsew")
-        right.rowconfigure(2, weight=1)
+        right.rowconfigure(1, weight=1)
         right.columnconfigure(0, weight=1)
-        self.sel_label = ttk.Label(right, text="Kein Lehrer ausgewählt", font=("Segoe UI", 11, "bold"))
-        self.sel_label.grid(row=0, column=0, sticky="w")
-        self.check_frame = ttk.Frame(right)
-        self.check_frame.grid(row=1, column=0, sticky="ew", pady=(8, 16))
-        self.s_tree = self._make_tree(right, ("fach", "n"), ("Fach", "Teilnehmer"), (150, 80), parent_grid=(2, 0))
+        ttk.Label(right, text="Fächer im Überblick", font=("Segoe UI", 11, "bold")).grid(
+            row=0, column=0, sticky="w", pady=(0, 8))
+        self.s_tree = self._make_tree(right, ("fach", "n"), ("Fach", "Teilnehmer"), (150, 80), parent_grid=(1, 0))
         self.summary = ttk.Label(f, text="", foreground="gray")
         self.summary.pack(anchor="w", pady=(10, 0))
         return f
@@ -230,7 +223,7 @@ class App(tk.Tk):
 
     def _row_values(self, name: str) -> tuple[tuple, tuple]:
         subjects = self.teachers[name]
-        cells = [(OFF if (name, s) in self.disabled else "") + s for s in subjects[:4]]
+        cells = [("✗ " if (name, s) in self.disabled else "✓ ") + s for s in subjects[:4]]
         cells += [""] * (4 - len(cells))
         tags = []
         if name in self.excluded:
@@ -245,7 +238,6 @@ class App(tk.Tk):
             self.t_tree.item(name, values=values, tags=tags)
 
     def _refresh_review(self) -> None:
-        keep = self._current_teacher
         query = self.search.get().strip().casefold()
         self.t_tree.delete(*self.t_tree.get_children())
         for name, subjects in self.teachers.items():
@@ -253,8 +245,6 @@ class App(tk.Tk):
                 continue
             values, tags = self._row_values(name)
             self.t_tree.insert("", "end", iid=name, values=values, tags=tags)
-        if keep and self.t_tree.exists(keep):
-            self.t_tree.selection_set(keep)
         self._refresh_subjects()
 
     def _refresh_subjects(self) -> None:
@@ -271,10 +261,16 @@ class App(tk.Tk):
         )
 
     def _on_tree_click(self, event) -> None:
-        if self.t_tree.identify_region(event.x, event.y) == "cell" and self.t_tree.identify_column(event.x) == "#1":
-            row = self.t_tree.identify_row(event.y)
-            if row:
-                self._toggle_teacher(row)
+        if self.t_tree.identify_region(event.x, event.y) != "cell":
+            return
+        row = self.t_tree.identify_row(event.y)
+        col = int(self.t_tree.identify_column(event.x)[1:])
+        if not row:
+            return
+        if col == 1:
+            self._toggle_teacher(row)
+        elif col >= 3 and col - 3 < len(self.teachers[row]):
+            self._toggle_subject(row, self.teachers[row][col - 3])
 
     def _on_space(self, _event=None) -> str:
         for name in self.t_tree.selection():
@@ -304,30 +300,8 @@ class App(tk.Tk):
             self._update_row(name)
         self._refresh_subjects()
 
-    def _on_teacher_select(self, _event=None) -> None:
-        sel = self.t_tree.selection()
-        if not sel or sel[0] == self._current_teacher and self._check_vars:
-            return
-        name = sel[0]
-        self._current_teacher = name
-        for w in self.check_frame.winfo_children():
-            w.destroy()
-        self._check_vars = {}
-        self.sel_label.configure(text=name)
-        for subject in self.teachers[name]:
-            var = tk.BooleanVar(value=(name, subject) not in self.disabled)
-            self._check_vars[subject] = var
-            ttk.Checkbutton(
-                self.check_frame, text=subject, variable=var,
-                command=lambda s=subject: self._toggle_subject(name, s),
-            ).pack(anchor="w", pady=2)
-
     def _toggle_subject(self, name: str, subject: str) -> None:
-        key = (name, subject)
-        if self._check_vars[subject].get():
-            self.disabled.discard(key)
-        else:
-            self.disabled.add(key)
+        self.disabled.symmetric_difference_update({(name, subject)})
         self.schedule = None
         self._update_row(name)
         self._refresh_subjects()
