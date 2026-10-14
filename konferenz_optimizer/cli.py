@@ -78,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("csv", help="CSV: Name,Fach1,Fach2,[Fach3,Fach4]")
     p.add_argument("--max-slots", type=int, help="maximale Anzahl hintereinander liegender Slots")
     p.add_argument("--objective", choices=OBJECTIVES, default="teilnehmer",
-                   help="teilnehmer: wenige betroffene Lehrer; verpasst: wenige verpasste Termine")
+                   help="teilnehmer: wenige betroffene Lehrer*innen; verpasst: wenige verpasste Termine")
     p.add_argument("--solver", choices=("cpsat", "heur"), default="cpsat")
     p.add_argument("--time-limit", type=float, default=30.0, help="Sekunden")
     p.add_argument("--out", help="Ergebnis in .csv oder .json speichern")

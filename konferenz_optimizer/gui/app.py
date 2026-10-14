@@ -147,14 +147,14 @@ class App(tk.Tk):
             messagebox.showerror("Fehler beim Lesen", str(exc))
             return
         if not teachers:
-            messagebox.showwarning("Keine Daten", "Die Datei enthält keine Lehrer.")
+            messagebox.showwarning("Keine Daten", "Die Datei enthält keine Lehrer*innen.")
             return
         self.teachers, self.path = teachers, path
         self.disabled.clear()
         self.excluded.clear()
         self.schedule = None
         subjects = {s for v in teachers.values() for s in v}
-        self.load_info.configure(text=f"{path}\n{len(teachers)} Lehrer · {len(subjects)} Fächer")
+        self.load_info.configure(text=f"{path}\n{len(teachers)} Lehrer*innen · {len(subjects)} Fächer")
         self.show_step(1)
 
     # ---------- Schritt 2: Pruefen ----------
@@ -163,7 +163,7 @@ class App(tk.Tk):
         ttk.Label(f, text="Daten prüfen", font=("Segoe UI", 16, "bold")).pack(anchor="w")
         ttk.Label(
             f,
-            text="Per Klick auf ✓ bzw. ✗ Lehrer oder einzelne Fächer ausnehmen – ausgenommene Einträge werden nicht berücksichtigt.",
+            text="Per Klick auf ✓ bzw. ✗ Lehrer*innen oder einzelne Fächer ausnehmen – ausgenommene Einträge werden nicht berücksichtigt.",
             foreground="gray",
         ).pack(anchor="w", pady=(2, 12))
 
@@ -179,7 +179,7 @@ class App(tk.Tk):
         self.search.trace_add("write", lambda *_: self._refresh_review())
         ttk.Entry(left, textvariable=self.search).pack(fill="x", pady=(0, 8))
         self.t_tree = self._make_tree(left, ("chk", "name", "f1", "f2", "f3", "f4"),
-                                      ("", "Lehrer", "Fach 1", "Fach 2", "Fach 3", "Fach 4"),
+                                      ("", "Lehrer*in", "Fach 1", "Fach 2", "Fach 3", "Fach 4"),
                                       (36, 170, 120, 120, 120, 120))
         self.t_tree.column("chk", width=36, stretch=False, anchor="center")
         self.t_tree.tag_configure("changed", foreground="#9a6700")
@@ -189,10 +189,10 @@ class App(tk.Tk):
 
         bulk = ttk.Frame(left)
         bulk.pack(fill="x", pady=(8, 0), before=self.t_tree.master)
+        ttk.Label(bulk, text="Lehrer*innen auswählen:").pack(side="left", padx=(0, 10))
         ttk.Button(bulk, text="Alle", command=lambda: self._set_visible(True)).pack(side="left")
         ttk.Button(bulk, text="Keine", command=lambda: self._set_visible(False)).pack(side="left", padx=6)
         ttk.Button(bulk, text="Umkehren", command=self._invert_visible).pack(side="left")
-        ttk.Label(bulk, text="gilt für die angezeigten Lehrer", foreground="gray").pack(side="left", padx=12)
 
         right = ttk.Frame(main)
         right.grid(row=0, column=1, sticky="nsew")
@@ -280,7 +280,7 @@ class App(tk.Tk):
         entries = sum(len(v) for v in active.values())
         n_active = len(self.teachers) - len(self.excluded)
         self.summary.configure(
-            text=f"{n_active} von {len(self.teachers)} Lehrern aktiv · {len(problem.events)} Fächer · {entries} Teilnahmen"
+            text=f"{n_active} von {len(self.teachers)} Lehrer*innen aktiv · {len(problem.events)} Fächer · {entries} Teilnahmen"
             + (f" · {len(self.disabled)} Fächer abgewählt" if self.disabled else "")
         )
 
@@ -355,7 +355,7 @@ class App(tk.Tk):
 
         self.objective = tk.StringVar(value="teilnehmer")
         ttk.Label(form, text="Falls die Obergrenze nicht reicht, minimiere …").pack(anchor="w", pady=(16, 4))
-        ttk.Radiobutton(form, text="die Anzahl der Lehrer, die Konferenzen verpassen",
+        ttk.Radiobutton(form, text="die Anzahl der Lehrer*innen, die Konferenzen verpassen",
                         variable=self.objective, value="teilnehmer").pack(anchor="w", pady=2)
         ttk.Radiobutton(form, text="die Gesamtzahl der verpassten Konferenzen",
                         variable=self.objective, value="verpasst").pack(anchor="w", pady=2)
@@ -438,7 +438,7 @@ class App(tk.Tk):
             return
         m = s.metrics
         self.kpi.configure(
-            text=f"{m.num_slots} Slots · {m.unhappy} Lehrer mit verpassten Konferenzen · "
+            text=f"{m.num_slots} Slots · {m.unhappy} Lehrer*innen mit verpassten Konferenzen · "
                  f"{m.missed} verpasste Termine · {m.gaps} Leerlauf-Slots · {s.status}"
         )
         self.res_pane.columnconfigure(0, weight=2, uniform="r")
@@ -453,7 +453,7 @@ class App(tk.Tk):
         right.grid(row=0, column=1, sticky="nsew")
         n = len(s.slots)
         cols = ("name", *[f"s{i}" for i in range(n)], "gap", "miss")
-        heads = ("Lehrer", *[f"Slot {i + 1}" for i in range(n)], "Leerlauf", "Verpasst")
+        heads = ("Lehrer*in", *[f"Slot {i + 1}" for i in range(n)], "Leerlauf", "Verpasst")
         tree = self._make_tree(right, cols, heads, (140, *[90] * n, 70, 120))
         tree.tag_configure("missed", foreground=ERR)
         for r in s.reports:

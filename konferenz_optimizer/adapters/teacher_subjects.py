@@ -48,7 +48,7 @@ def problem_from_teachers(teachers: dict[str, list[str]]) -> Problem:
     for name, subjects in teachers.items():
         for subject in subjects:
             events.setdefault(subject, set()).add(name)
-    return Problem({e: frozenset(m) for e, m in events.items()}, Labels("Fach", "Lehrer"))
+    return Problem({e: frozenset(m) for e, m in events.items()}, Labels("Fach", "Lehrer*innen"))
 
 
 def parse_rows(rows: list[list[str]]) -> Problem:

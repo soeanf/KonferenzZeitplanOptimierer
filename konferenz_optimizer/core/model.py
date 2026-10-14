@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class Labels:
     event: str = "Fach"
-    participant: str = "Lehrer"
+    participant: str = "Lehrer*innen"
 
 
 @dataclass
