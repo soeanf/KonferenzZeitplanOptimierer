@@ -377,9 +377,8 @@ class App(tk.Tk):
         ).pack(anchor="w", pady=(4, 0))
 
         self.progress = ttk.Progressbar(f, mode="indeterminate", length=360)
-        self.progress.pack(anchor="w", pady=(20, 0))
         self.solve_msg = ttk.Label(f, text="", foreground="gray")
-        self.solve_msg.pack(anchor="w", pady=8)
+        self.solve_msg.pack(anchor="w", pady=(20, 8))
         return f
 
     def _limit_toggled(self) -> None:
@@ -401,6 +400,7 @@ class App(tk.Tk):
             return
         self._busy = True
         self.show_step(2)
+        self.progress.pack(anchor="w", before=self.solve_msg)
         self.progress.start(12)
         self.solve_msg.configure(text="Berechne optimalen Plan …")
         objective = self.objective.get()
@@ -422,6 +422,7 @@ class App(tk.Tk):
             return
         self._busy = False
         self.progress.stop()
+        self.progress.pack_forget()
         self.solve_msg.configure(text="")
         if kind == "err":
             self.show_step(2)
