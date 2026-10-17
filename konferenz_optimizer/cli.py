@@ -5,29 +5,29 @@ import csv
 import json
 import sys
 
-from .adapters.teacher_subjects import load_teacher_subjects
+from .adapters.teacher_subjects import PRESETS, load_teacher_subjects
 from .core.model import Schedule
 from .core.solver_heur import OBJECTIVES, solve_heuristic
 
 
-def solve(problem, solver: str, max_slots, objective, time_limit) -> Schedule:
+def solve(problem, solver: str, max_slots, objective, time_limit, max_parallel=None) -> Schedule:
     if solver == "cpsat":
         try:
             from .core.solver_cpsat import solve_cpsat
         except ImportError:
             print("OR-Tools fehlt, verwende Heuristik.", file=sys.stderr)
         else:
-            return solve_cpsat(problem, max_slots, objective, time_limit)
-    return solve_heuristic(problem, max_slots, objective, time_limit)
+            return solve_cpsat(problem, max_slots, objective, time_limit, max_parallel=max_parallel)
+    return solve_heuristic(problem, max_slots, objective, time_limit, max_parallel=max_parallel)
 
 
 def render(s: Schedule) -> str:
-    ev, pa = s.problem.labels.event, s.problem.labels.participant
+    pa = s.problem.labels.participant
     out = []
     out.append(f"Status: {s.status}")
     m = s.metrics
     out.append(
-        f"Slots: {m.num_slots} | {pa} mit verpassten {ev}-Konferenzen: {m.unhappy} | "
+        f"Slots: {m.num_slots} | {pa} mit verpassten Konferenzen: {m.unhappy} | "
         f"verpasste Termine: {m.missed} | Leerlauf (Slots): {m.gaps}"
     )
     out.append("")
@@ -75,22 +75,34 @@ def export(s: Schedule, path: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="konferenz-optimizer", description=__doc__)
-    p.add_argument("csv", help="CSV: Name,Fach1,Fach2,[Fach3,Fach4]")
+    p.add_argument("csv", help="CSV: Name,Eintrag1,Eintrag2,... (beliebig viele Spalten)")
+    p.add_argument("--art", choices=tuple(PRESETS), default="fach",
+                   help="fach: Fachkonferenz (Lehrkräfte eines Fachs); klasse: Lehrkräfte einer Klasse, "
+                        "eines Jahrgangs oder Kurses (Noten-, Zeugnis-, Jahrgangs-, Kurskonferenz). "
+                        "Ändert nur die Beschriftung.")
     p.add_argument("--max-slots", type=int, help="maximale Anzahl hintereinander liegender Slots")
+    p.add_argument("--max-parallel", type=int,
+                   help="maximale Anzahl gleichzeitig stattfindender Konferenzen (Standard: unbegrenzt)")
     p.add_argument("--objective", choices=OBJECTIVES, default="teilnehmer",
                    help="teilnehmer: wenige betroffene Lehrer*innen; verpasst: wenige verpasste Termine")
     p.add_argument("--solver", choices=("cpsat", "heur"), default="cpsat")
-    p.add_argument("--time-limit", type=float, default=30.0, help="Sekunden")
+    p.add_argument("--time-limit", type=float, default=180.0, help="Sekunden")
     p.add_argument("--out", help="Ergebnis in .csv oder .json speichern")
     args = p.parse_args(argv)
     if args.max_slots is not None and args.max_slots < 1:
         p.error("--max-slots muss >= 1 sein")
+    if args.max_parallel is not None and args.max_parallel < 1:
+        p.error("--max-parallel muss >= 1 sein")
     try:
-        problem = load_teacher_subjects(args.csv)
+        problem = load_teacher_subjects(args.csv, PRESETS[args.art])
     except (OSError, ValueError) as exc:
         print(f"Fehler beim Lesen: {exc}", file=sys.stderr)
         return 2
-    schedule = solve(problem, args.solver, args.max_slots, args.objective, args.time_limit)
+    try:
+        schedule = solve(problem, args.solver, args.max_slots, args.objective, args.time_limit, args.max_parallel)
+    except ValueError as exc:
+        print(f"Fehler: {exc}", file=sys.stderr)
+        return 2
     print(render(schedule))
     if args.out:
         export(schedule, args.out)

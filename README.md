@@ -1,8 +1,8 @@
 # Konferenzzeitplan-Optimierer
 
-Werkzeug, das Fachkonferenzen (später auch andere Konferenzarten) so auf Zeit-Slots verteilt, dass möglichst jede Lehrkraft an allen Konferenzen ihrer Fächer teilnehmen kann.
+Werkzeug, das Konferenzen so auf Zeit-Slots verteilt, dass möglichst jede Lehrkraft an allen Konferenzen teilnehmen kann, zu denen sie gehört. Es gibt zwei Arten, die sich nur in der Beschriftung unterscheiden: **Fachkonferenzen** (alle Lehrkräfte eines Fachs) und **Klassenkonferenzen** (alle Lehrkräfte einer Klasse, eines Jahrgangs oder Kurses, also auch Noten-, Zeugnis-, Jahrgangs-, Kurs- und pädagogische Konferenzen).
 
-> **Status:** Kommandozeilen-Tool, GUI und Standalone-EXE sind einsatzbereit. Geplant ist noch ein Adapter für Klassenkonferenzen. Der ursprüngliche Entwurf steht in [PLAN.md](PLAN.md).
+> **Status:** Kommandozeilen-Tool, GUI und Standalone-EXE sind einsatzbereit und für beide Konferenzarten nutzbar. Der ursprüngliche Entwurf steht in [PLAN.md](PLAN.md).
 
 | Version | Inhalt |
 | --- | --- |
@@ -19,10 +19,11 @@ Die Dateien sind nicht signiert, Windows kann beim ersten Start warnen („Weite
 
 ## Problem
 
-Es stehen Fachkonferenzen an. Jede Lehrkraft unterrichtet mehrere Fächer und soll an allen zugehörigen Konferenzen teilnehmen können.
+Es stehen Konferenzen an. Jede Lehrkraft gehört zu mehreren Konferenzen (bei Fachkonferenzen zu ihren Fächern, bei Klassenkonferenzen zu ihren Klassen, Jahrgängen oder Kursen) und soll an allen teilnehmen können.
 
 - Möglichst viele Konferenzen sollen **gleichzeitig** stattfinden, damit insgesamt nur ein kurzer Zeitraum geblockt werden muss.
 - Optional gibt es eine **Obergrenze an Slots** (z. B. höchstens 6 Konferenzen hintereinander). Reicht sie nicht aus, verpassen möglichst wenige Lehrkräfte Konferenzen.
+- Optional lässt sich auch begrenzen, **wie viele Konferenzen gleichzeitig** laufen dürfen (z. B. wegen der Zahl der Räume oder Moderator*innen). Standard ist unbegrenzt.
 - Die Slots werden so angeordnet, dass jede Lehrkraft möglichst **wenig Leerlauf** zwischen ihren Konferenzen hat.
 - Alle Konferenzen finden am selben Tag statt. Zeitwünsche werden nicht berücksichtigt.
 
@@ -39,11 +40,17 @@ Nur zum Bauen der EXEs bzw. Icons zusätzlich: `pyinstaller` und `pillow`.
 
 ## Eingabe
 
-CSV im Format `Name,Fach1,Fach2,Fach3,Fach4` (siehe [beispiel.csv](beispiel.csv)).
+CSV im Format `Name,Eintrag1,Eintrag2,Eintrag3,…` mit **beliebig vielen** Spalten (siehe [beispiel.csv](beispiel.csv)). Die Einträge sind bei Fachkonferenzen Fächer, bei Klassenkonferenzen Klassen, Jahrgänge oder Kurse (in der Oberfläche „Gruppen“ genannt). Das Format ist immer dasselbe: eine Zeile je Lehrkraft.
 
-- Fach 3 und 4 sind optional, leere Felder werden ignoriert.
+```
+Name,Klasse1,Klasse2,Klasse3,Klasse4
+Meier,5a,5b,6a,
+Schulz,5a,7c,8b,9a
+```
+
+- Zeilen dürfen unterschiedlich viele Einträge haben, leere Felder werden ignoriert.
 - Eine Kopfzeile wird erkannt, das Trennzeichen (`,` oder `;`) und die Kodierung (UTF-8 oder cp1252) werden automatisch erkannt.
-- Whitespace und Groß-/Kleinschreibung bei Fächern werden normalisiert.
+- Whitespace und Groß-/Kleinschreibung der Einträge werden normalisiert.
 
 ## Verwendung
 
@@ -55,9 +62,9 @@ CSV im Format `Name,Fach1,Fach2,Fach3,Fach4` (siehe [beispiel.csv](beispiel.csv)
 
 Die Oberfläche führt in vier Schritten durch den Ablauf. Mit „Hell/Dunkel“ lässt sich das Design wechseln, die Windows-Titelleiste passt sich an.
 
-1. **Daten laden:** CSV-Datei auswählen.
-2. **Daten prüfen:** Lehrkräfte und Fächer in einer Tabelle ansehen (mit Suchfeld). Per Klick auf das ✓ bzw. ✗ vor dem Namen (oder mit der Leertaste) lässt sich eine Lehrkraft komplett von der Berechnung ausnehmen. Die Schaltflächen „Alle“, „Keine“ und „Umkehren“ wirken auf die gerade angezeigten Lehrkräfte. Ebenso lässt sich jedes einzelne Fach einer Lehrkraft per Klick auf sein ✓ bzw. ✗ ausnehmen. Rechts steht eine Fächerübersicht mit der Zahl der Teilnehmer, die sich per Klick auf die Spaltenköpfe nach Fach oder Teilnehmerzahl sortieren lässt. Ausnahmen gelten nur für die laufende Sitzung und werden nicht in die CSV zurückgeschrieben.
-3. **Berechnen:** optionale Slot-Obergrenze, Ziel bei zu wenigen Slots und Zeitlimit festlegen. Die Berechnung läuft im Hintergrund, ein Balken zeigt, dass sie läuft. Das Zeitlimit ist die maximale Rechenzeit (siehe „Zeitlimit“ unten).
+1. **Daten laden:** Art der Konferenzen wählen (Fachkonferenzen oder Klassenkonferenzen, das bestimmt nur die Beschriftung) und CSV-Datei auswählen.
+2. **Daten prüfen:** Lehrkräfte und ihre Einträge in einer Tabelle ansehen (mit Suchfeld). Die Tabelle hat so viele Spalten, wie eine Lehrkraft maximal Einträge hat; bei vielen Spalten erscheint eine horizontale Bildlaufleiste. Per Klick auf das ✓ bzw. ✗ vor dem Namen (oder mit der Leertaste) lässt sich eine Lehrkraft komplett von der Berechnung ausnehmen. Die Schaltflächen „Alle“, „Keine“ und „Umkehren“ wirken auf die gerade angezeigten Lehrkräfte. Ebenso lässt sich jeder einzelne Eintrag einer Lehrkraft per Klick auf sein ✓ bzw. ✗ ausnehmen. Rechts steht eine Übersicht aller Fächer bzw. Gruppen mit der Zahl der Teilnehmer, die sich per Klick auf die Spaltenköpfe sortieren lässt. Ausnahmen gelten nur für die laufende Sitzung und werden nicht in die CSV zurückgeschrieben.
+3. **Berechnen:** optionale Slot-Obergrenze, optionale Obergrenze für gleichzeitige Konferenzen, Ziel bei zu wenigen Slots und Zeitlimit festlegen. Passen die Grenzen nicht zusammen (z. B. 18 Konferenzen in 2 Slots mit höchstens 2 gleichzeitigen), erscheint eine verständliche Meldung. Die Berechnung läuft im Hintergrund, ein Balken zeigt, dass sie läuft. Das Zeitlimit ist die maximale Rechenzeit (siehe „Zeitlimit“ unten).
 4. **Ergebnis:** Slots mit ihren Fächern und Plan pro Lehrkraft mit Leerlauf. Lehrkräfte mit verpassten Konferenzen sind rot markiert. Der Export erfolgt als CSV oder JSON.
 
 ### Kommandozeile
@@ -68,11 +75,21 @@ Die Oberfläche führt in vier Schritten durch den Ablauf. Mit „Hell/Dunkel“
 
 | Option | Bedeutung |
 | --- | --- |
+| `--art fach\|klasse` | Konferenzart, bestimmt nur die Beschriftung (Standard `fach`; `klasse` für Klassen-, Jahrgangs- und Kurskonferenzen, auch Noten- und Zeugniskonferenzen) |
 | `--max-slots N` | Obergrenze für die Zahl der hintereinanderliegenden Slots |
+| `--max-parallel K` | Obergrenze für die Zahl gleichzeitig stattfindender Konferenzen (Standard unbegrenzt) |
 | `--objective teilnehmer\|verpasst` | Ziel, falls die Obergrenze nicht reicht: wenige betroffene Lehrkräfte (Standard) oder wenige verpasste Termine |
 | `--solver cpsat\|heur` | exakter Solver (Standard) oder Heuristik ohne OR-Tools |
-| `--time-limit S` | Zeitlimit in Sekunden (Standard 30) |
+| `--time-limit S` | Zeitlimit in Sekunden (Standard 180) |
 | `--out datei.csv\|datei.json` | Ergebnis speichern |
+
+Beispiel Klassenkonferenz mit höchstens 6 Slots hintereinander und 3 parallelen Konferenzen:
+
+```
+.venv\Scripts\python -m konferenz_optimizer klassen.csv --art klasse --max-slots 6 --max-parallel 3
+```
+
+Passen die Grenzen nicht zusammen, z. B. 18 Konferenzen bei 2 Slots à 2 parallel, bricht das Programm mit einer Meldung ab (Exit-Code 2).
 
 Die Ausgabe enthält:
 - die Slot-Tabelle,
@@ -83,7 +100,7 @@ Der CSV-Export enthält die Slot-Tabelle und den Plan pro Lehrkraft, der JSON-Ex
 
 ## Vorgehen
 
-Das Problem ist allgemein modelliert: **Ereignisse** (Fach bzw. Klasse) haben **Teilnehmer** (Lehrkräfte). Zwei Ereignisse stehen in Konflikt, wenn sie mindestens einen gemeinsamen Teilnehmer haben. Die Kollegiumsliste (Lehrkraft → Fächer) wird dafür intern zu Fach → Lehrkräfte umgruppiert.
+Das Problem ist allgemein modelliert: **Ereignisse** (Fach, Klasse, Jahrgang oder Kurs) haben **Teilnehmer** (Lehrkräfte). Zwei Ereignisse stehen in Konflikt, wenn sie mindestens einen gemeinsamen Teilnehmer haben und deshalb nicht im selben Slot liegen sollten. Die Kollegiumsliste (Lehrkraft → Einträge) wird dafür intern zu Eintrag → Lehrkräfte umgruppiert.
 
 Der Solver (OR-Tools CP-SAT) optimiert lexikographisch in drei Stufen:
 
@@ -102,7 +119,7 @@ Meist ist der beste Plan nach wenigen Sekunden gefunden. Das Zeitlimit greift nu
 ```
 konferenz_optimizer/
   core/      Modell, Auswertung, Solver (solver_cpsat.py, solver_heur.py)
-  adapters/  Eingabeformate (teacher_subjects.py: Lehrkraft → Fächer)
+  adapters/  Eingabeformate (teacher_subjects.py: Lehrkraft → Einträge, Beschriftungen für Fach/Gruppe)
   cli.py     Kommandozeile
   gui/       GUI (tkinter + sv-ttk), Icons in gui/assets/
 tests/       Tests inkl. Zufallsinstanzen (Heuristik gegen CP-SAT)
@@ -135,4 +152,4 @@ Beide rechnen mit demselben Solver wie die Python-Variante, Ergebnis und Rechenz
 
 ## Geplant
 
-- Adapter für Zeugniskonferenzen (Klasse → Lehrkräfte)
+- Eingabeformat in der Gegenrichtung (Klasse → Lehrkräfte, eine Zeile je Klasse)

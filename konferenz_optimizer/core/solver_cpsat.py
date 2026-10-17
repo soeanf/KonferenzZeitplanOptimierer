@@ -10,20 +10,22 @@ import time
 from ortools.sat.python import cp_model
 
 from .model import Problem, Schedule, evaluate
-from .solver_heur import dsatur, loss_weights
+from .solver_heur import check_capacity, dsatur, loss_weights
 
 
 def solve_cpsat(
     problem: Problem,
     max_slots: int | None = None,
     objective: str = "teilnehmer",
-    time_limit: float = 30.0,
+    time_limit: float = 180.0,
     workers: int = 0,
+    max_parallel: int | None = None,
 ) -> Schedule:
     events = sorted(problem.events)
     if not events:
         return evaluate(problem, [], "leer")
-    ub = max(dsatur(problem.conflict_graph()).values()) + 1
+    check_capacity(len(events), max_slots, max_parallel)
+    ub = max(dsatur(problem.conflict_graph(), max_parallel).values()) + 1
     n_slots = ub if max_slots is None else min(max_slots, ub)
     parts = [(sorted(evs)) for evs in problem.participants.values()]
     w_unhappy, w_missed = loss_weights(problem, objective)
@@ -34,6 +36,8 @@ def solve_cpsat(
         m.add_exactly_one(x[e, s] for s in range(n_slots))
     used = [m.new_bool_var(f"used_{s}") for s in range(n_slots)]
     for s in range(n_slots):
+        if max_parallel is not None:
+            m.add(sum(x[e, s] for e in events) <= max_parallel)
         for e in events:
             m.add_implication(x[e, s], used[s])
         if s + 1 < n_slots:

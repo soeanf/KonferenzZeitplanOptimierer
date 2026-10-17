@@ -1,4 +1,11 @@
-"""Adapter: Kollegiumsliste (Lehrer -> Faecher) als Fachkonferenzen (Fach -> Lehrer)."""
+"""Adapter: Kollegiumsliste (Lehrer -> Faecher/Gruppen) als Konferenzen (Eintrag -> Lehrer).
+
+Die Spaltenzahl ist beliebig: Auf `Name` folgen so viele Eintraege wie die Lehrkraft hat.
+Zwei Konferenzarten unterscheiden sich nur in der Beschriftung (PRESETS):
+- fach:   alle Lehrkraefte eines Fachs kommen zusammen (Fachkonferenz)
+- klasse: alle Lehrkraefte einer Klasse, eines Jahrgangs oder Kurses kommen zusammen
+          (Noten-, Zeugnis-, Jahrgangs-, Kurs- und paedagogische Konferenzen)
+"""
 from __future__ import annotations
 
 import csv
@@ -6,6 +13,11 @@ import io
 from pathlib import Path
 
 from ..core.model import Labels, Problem
+
+PRESETS: dict[str, Labels] = {
+    "fach": Labels("Fach", "Lehrer*innen", "Fächer"),
+    "klasse": Labels("Gruppe", "Lehrer*innen", "Gruppen"),
+}
 
 
 def _read_text(path: Path) -> str:
@@ -23,7 +35,7 @@ def _normalize(subject: str) -> str:
 
 
 def parse_teachers(rows: list[list[str]]) -> dict[str, list[str]]:
-    """Zeilen im Format Name,Fach1,Fach2[,Fach3,Fach4] -> Lehrer -> Faecher (in Reihenfolge)."""
+    """Zeilen im Format Name,Eintrag1,Eintrag2,... -> Lehrer -> Eintraege (in Reihenfolge)."""
     teachers: dict[str, list[str]] = {}
     canonical: dict[str, str] = {}  # casefold -> erste Schreibweise
     rows = [r for r in rows if any(c.strip() for c in r)]
@@ -43,16 +55,16 @@ def parse_teachers(rows: list[list[str]]) -> dict[str, list[str]]:
     return teachers
 
 
-def problem_from_teachers(teachers: dict[str, list[str]]) -> Problem:
+def problem_from_teachers(teachers: dict[str, list[str]], labels: Labels | None = None) -> Problem:
     events: dict[str, set[str]] = {}
     for name, subjects in teachers.items():
         for subject in subjects:
             events.setdefault(subject, set()).add(name)
-    return Problem({e: frozenset(m) for e, m in events.items()}, Labels("Fach", "Lehrer*innen"))
+    return Problem({e: frozenset(m) for e, m in events.items()}, labels or PRESETS["fach"])
 
 
-def parse_rows(rows: list[list[str]]) -> Problem:
-    return problem_from_teachers(parse_teachers(rows))
+def parse_rows(rows: list[list[str]], labels: Labels | None = None) -> Problem:
+    return problem_from_teachers(parse_teachers(rows), labels)
 
 
 def read_teachers(path: str | Path) -> dict[str, list[str]]:
@@ -62,5 +74,5 @@ def read_teachers(path: str | Path) -> dict[str, list[str]]:
     return parse_teachers(list(csv.reader(io.StringIO(text), delimiter=delimiter)))
 
 
-def load_teacher_subjects(path: str | Path) -> Problem:
-    return problem_from_teachers(read_teachers(path))
+def load_teacher_subjects(path: str | Path, labels: Labels | None = None) -> Problem:
+    return problem_from_teachers(read_teachers(path), labels)
