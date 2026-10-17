@@ -3,6 +3,7 @@ import threading
 import time
 
 import pytest
+from ortools.sat.python import cp_model
 
 from konferenz_optimizer.core.cancel import Cancelled, CancelToken
 from konferenz_optimizer.core.model import Problem
@@ -98,3 +99,38 @@ def test_stop_after_finish_keeps_optimal():
     schedule = solve_cpsat(p, time_limit=5, cancel=token)
     token.stop()
     assert schedule.status == "optimal"
+
+
+def test_later_stage_without_solution_keeps_previous_plan(monkeypatch):
+    """Findet eine Folgestufe nichts mehr, bleibt der Plan der Stufe davor (kein Fehler)."""
+    problem = hard_problem()
+    real_solve = cp_model.CpSolver.solve
+    calls = []
+
+    def flaky(self, model, *args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            return real_solve(self, model, *args, **kwargs)
+        return cp_model.UNKNOWN
+
+    monkeypatch.setattr(cp_model.CpSolver, "solve", flaky)
+    schedule = solve_cpsat(problem, max_slots=5, time_limit=10)
+    assert len(calls) == 2
+    assert "Zeitlimit" in schedule.status
+    assert_valid_plan(schedule, problem, 5, len(problem.events))
+
+
+def test_no_stage_finds_anything_still_returns_plan(monkeypatch):
+    problem = hard_problem()
+    monkeypatch.setattr(cp_model.CpSolver, "solve", lambda self, model, *a, **k: cp_model.UNKNOWN)
+    schedule = solve_cpsat(problem, max_slots=5, max_parallel=4, time_limit=10)
+    assert "Zeitlimit" in schedule.status
+    assert_valid_plan(schedule, problem, 5, 4)
+
+
+def test_forced_overlaps_with_tight_slot_limit():
+    """Zu wenige Slots: Lehrkraefte muessen sich entscheiden, es gibt trotzdem einen Plan."""
+    problem = hard_problem()
+    schedule = solve_cpsat(problem, max_slots=2, time_limit=10)
+    assert_valid_plan(schedule, problem, 2, len(problem.events))
+    assert schedule.metrics.missed > 0

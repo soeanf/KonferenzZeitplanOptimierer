@@ -27,7 +27,8 @@ def solve_cpsat(
     if not events:
         return evaluate(problem, [], "leer")
     check_capacity(len(events), max_slots, max_parallel)
-    ub = max(dsatur(problem.conflict_graph(), max_parallel).values()) + 1
+    coloring = dsatur(problem.conflict_graph(), max_parallel)
+    ub = max(coloring.values()) + 1
     n_slots = ub if max_slots is None else min(max_slots, ub)
     parts = [(sorted(evs)) for evs in problem.participants.values()]
     w_unhappy, w_missed = loss_weights(problem, objective)
@@ -73,11 +74,23 @@ def solve_cpsat(
     all_optimal = True
     deadline = time.monotonic() + time_limit
 
+    def initial_plan() -> dict:
+        """Gueltiger Startplan; sichert, dass nie 'kein Plan' herauskommt."""
+        if n_slots == ub:
+            slot_of = coloring  # konfliktfrei
+        else:
+            groups = [g for g in greedy_slots(problem, n_slots, max_parallel) if g]
+            slot_of = {e: i for i, g in enumerate(groups) for e in g}  # Slots ohne Luecke
+        return {(e, s): int(slot_of[e] == s) for e in events for s in range(n_slots)}
+
+    best = initial_plan()
+
     def run(expr, share: float) -> dict | None:
         """Minimiert expr, fixiert das Ergebnis als Schranke, liefert die Belegung.
 
-        Gibt None zurueck, wenn der Benutzer vorzeitig stoppt, bevor diese Stufe
-        eine Loesung gefunden hat; dann gilt der Plan der vorigen Stufe.
+        Startet vom bisher besten Plan. Gibt None zurueck, wenn die Stufe keine Loesung
+        mehr findet (Zeitanteil aufgebraucht) oder der Benutzer stoppt; dann gilt der
+        bisher beste Plan.
         """
         nonlocal all_optimal
         if cancel:
@@ -88,6 +101,8 @@ def solve_cpsat(
         solver.parameters.max_time_in_seconds = max(1.0, (deadline - time.monotonic()) * share)
         solver.parameters.num_workers = workers
         m.clear_hints()
+        for key, value in best.items():
+            m.add_hint(x[key], value)
         m.minimize(expr)
         if cancel:
             cancel.attach(solver)
@@ -99,9 +114,9 @@ def solve_cpsat(
         if cancel:
             cancel.raise_if_cancelled()
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            if cancel and cancel.stop_requested:
-                return None
-            raise RuntimeError("Kein zulaessiger Plan gefunden (Zeitlimit zu knapp?)")
+            if not (cancel and cancel.stop_requested):
+                all_optimal = False
+            return None
         all_optimal &= status == cp_model.OPTIMAL
         m.add(expr <= int(round(solver.objective_value)))
         return {k: solver.value(v) for k, v in x.items()}
@@ -111,26 +126,22 @@ def solve_cpsat(
         stages.insert(0, (loss, 0.4))
     else:
         m.add(loss <= 0)
-    best: dict | None = None
     completed = True
     for expr, share in stages:
         solution = run(expr, share)
-        if solution is None:  # vorzeitig gestoppt
+        if solution is None:
             completed = False
             break
         best = solution
-
-    if best is None:  # gestoppt, bevor irgendeine Stufe einen Plan hatte
-        slots = greedy_slots(problem, n_slots, max_parallel)
-        return evaluate(problem, slots, STOPPED)
 
     slots: list[list[str]] = [[] for _ in range(n_slots)]
     for (e, s), val in best.items():
         if val:
             slots[s].append(e)
-    stopped = bool(cancel and cancel.stop_requested) and not (completed and all_optimal)
-    if stopped:
+    if cancel and cancel.stop_requested and not (completed and all_optimal):
         status = STOPPED
+    elif completed and all_optimal:
+        status = "optimal"
     else:
-        status = "optimal" if all_optimal else "beste gefundene Loesung (Zeitlimit)"
+        status = "beste gefundene Loesung (Zeitlimit)"
     return evaluate(problem, slots, status)
