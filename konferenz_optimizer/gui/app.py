@@ -4,13 +4,15 @@ from __future__ import annotations
 import queue
 import sys
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from ..adapters.teacher_subjects import problem_from_teachers, read_teachers
+from ..adapters.teacher_subjects import PRESETS, problem_from_teachers, read_teachers
 from ..cli import export, solve
-from ..core.model import Schedule
+from ..core.cancel import Cancelled, CancelToken
+from ..core.model import Labels, Schedule
 
 try:
     import sv_ttk
@@ -20,6 +22,11 @@ except ImportError:  # optional: ohne Theme default-Look
 STEPS = ["1  Daten laden", "2  Daten prüfen", "3  Berechnen", "4  Ergebnis"]
 ERR = "#c42b1c"
 ASSETS = Path(__file__).parent / "assets"
+PRESET_TITLES = {
+    "fach": "Fachkonferenzen – Lehrkräfte eines Fachs",
+    "klasse": "Klassenkonferenzen – Lehrkräfte einer Klasse, eines Jahrgangs oder Kurses",
+}
+ITEM_MIN_WIDTH = 110
 
 
 class App(tk.Tk):
@@ -34,16 +41,21 @@ class App(tk.Tk):
         self.option_add("*Font", ("Segoe UI", 10))
 
         self.teachers: dict[str, list[str]] = {}
-        self.disabled: set[tuple[str, str]] = set()  # (Lehrer, Fach)
+        self.disabled: set[tuple[str, str]] = set()  # (Lehrer, Eintrag)
         self.excluded: set[str] = set()  # komplett ausgenommene Lehrer
+        self.preset_var = tk.StringVar(value=PRESET_TITLES["fach"])
         self.schedule: Schedule | None = None
         self.path = ""
         self.step = 0
         self._queue: queue.Queue = queue.Queue()
         self._busy = False
+        self._cancel: CancelToken | None = None
+        self._t0 = 0.0
+        self._timer_job: str | None = None
 
         self._build_chrome()
         self._pages = [self._page_load(), self._page_review(), self._page_solve(), self._page_result()]
+        self._apply_labels()
         self.show_step(0)
 
     def _set_icon(self) -> None:
@@ -132,20 +144,63 @@ class App(tk.Tk):
             self.show_step(self.step + 1)
 
     # ---------- Schritt 1: Laden ----------
+    @property
+    def labels(self) -> Labels:
+        for key, title in PRESET_TITLES.items():
+            if title == self.preset_var.get():
+                return PRESETS[key]
+        return PRESETS["fach"]
+
     def _page_load(self) -> ttk.Frame:
         f = ttk.Frame(self.body)
         box = ttk.Frame(f)
         box.place(relx=0.5, rely=0.4, anchor="center")
         ttk.Label(box, text="Kollegiumsliste laden", font=("Segoe UI", 20, "bold")).pack()
-        ttk.Label(
-            box,
-            text="CSV mit den Spalten  Name, Fach 1, Fach 2, (Fach 3), (Fach 4)",
-            foreground="gray",
-        ).pack(pady=(6, 24))
+        self.load_hint = ttk.Label(box, text="", foreground="gray", justify="center")
+        self.load_hint.pack(pady=(6, 20))
+
+        kind = ttk.Frame(box)
+        kind.pack(pady=(0, 20))
+        ttk.Label(kind, text="Art der Konferenzen:").pack(side="left", padx=(0, 10))
+        combo = ttk.Combobox(kind, textvariable=self.preset_var, state="readonly", width=64,
+                             values=list(PRESET_TITLES.values()))
+        combo.pack(side="left")
+        combo.bind("<<ComboboxSelected>>", lambda _e: self._on_preset_changed())
+
         ttk.Button(box, text="CSV-Datei auswählen…", style="Accent.TButton", command=self.load_csv).pack()
         self.load_info = ttk.Label(box, text="", justify="center")
         self.load_info.pack(pady=20)
         return f
+
+    def _apply_labels(self) -> None:
+        """Passt alle Beschriftungen an die gewaehlte Konferenzart an."""
+        lb = self.labels
+        self.load_hint.configure(
+            text=f"CSV mit den Spalten  Name, {lb.event} 1, {lb.event} 2, …\n"
+                 "(eine Zeile je Lehrkraft, beliebig viele Spalten)"
+        )
+        self.review_hint.configure(
+            text=f"Per Klick auf ✓ bzw. ✗ Lehrer*innen oder einzelne {lb.event_plural} ausnehmen – "
+                 "ausgenommene Einträge werden nicht berücksichtigt."
+        )
+        self.s_title.configure(text=f"{lb.event_plural} im Überblick")
+        self.slot_head = f"{lb.event_plural} (parallel)"
+        self._configure_teacher_columns()
+        if self.teachers:
+            self._show_load_info()
+            self._refresh_review()
+
+    def _on_preset_changed(self) -> None:
+        self.schedule = None
+        self._apply_labels()
+        self.show_step(self.step)
+
+    def _show_load_info(self) -> None:
+        lb = self.labels
+        items = {s for v in self.teachers.values() for s in v}
+        self.load_info.configure(
+            text=f"{self.path}\n{len(self.teachers)} Lehrer*innen · {len(items)} {lb.event_plural}"
+        )
 
     def load_csv(self) -> None:
         path = filedialog.askopenfilename(
@@ -166,19 +221,15 @@ class App(tk.Tk):
         self.disabled.clear()
         self.excluded.clear()
         self.schedule = None
-        subjects = {s for v in teachers.values() for s in v}
-        self.load_info.configure(text=f"{path}\n{len(teachers)} Lehrer*innen · {len(subjects)} Fächer")
+        self._apply_labels()
         self.show_step(1)
 
     # ---------- Schritt 2: Pruefen ----------
     def _page_review(self) -> ttk.Frame:
         f = ttk.Frame(self.body)
         ttk.Label(f, text="Daten prüfen", font=("Segoe UI", 16, "bold")).pack(anchor="w")
-        ttk.Label(
-            f,
-            text="Per Klick auf ✓ bzw. ✗ Lehrer*innen oder einzelne Fächer ausnehmen – ausgenommene Einträge werden nicht berücksichtigt.",
-            foreground="gray",
-        ).pack(anchor="w", pady=(2, 12))
+        self.review_hint = ttk.Label(f, text="", foreground="gray")
+        self.review_hint.pack(anchor="w", pady=(2, 12))
 
         main = ttk.Frame(f)
         main.pack(fill="both", expand=True)
@@ -191,14 +242,12 @@ class App(tk.Tk):
         self.search = tk.StringVar()
         self.search.trace_add("write", lambda *_: self._refresh_review())
         ttk.Entry(left, textvariable=self.search).pack(fill="x", pady=(0, 8))
-        self.t_tree = self._make_tree(left, ("chk", "name", "f1", "f2", "f3", "f4"),
-                                      ("", "Lehrer*in", "Fach 1", "Fach 2", "Fach 3", "Fach 4"),
-                                      (36, 170, 120, 120, 120, 120))
-        self.t_tree.column("chk", width=36, stretch=False, anchor="center")
+        self.t_tree = self._make_tree(left, ("chk", "name"), ("", "Lehrer*in"), (36, 170), hscroll=True)
         self.t_tree.tag_configure("changed", foreground="#9a6700")
         self.t_tree.tag_configure("excluded", foreground="#9a9a9a")
         self.t_tree.bind("<Button-1>", self._on_tree_click, add="+")
         self.t_tree.bind("<space>", self._on_space)
+        self._n_items = 1
 
         bulk = ttk.Frame(left)
         bulk.pack(fill="x", pady=(8, 0), before=self.t_tree.master)
@@ -211,9 +260,9 @@ class App(tk.Tk):
         right.grid(row=0, column=1, sticky="nsew")
         right.rowconfigure(1, weight=1)
         right.columnconfigure(0, weight=1)
-        ttk.Label(right, text="Fächer im Überblick", font=("Segoe UI", 11, "bold")).grid(
-            row=0, column=0, sticky="w", pady=(0, 8))
-        self.s_tree = self._make_tree(right, ("fach", "n"), ("Fach", "Teilnehmer"), (150, 80), parent_grid=(1, 0))
+        self.s_title = ttk.Label(right, text="", font=("Segoe UI", 11, "bold"))
+        self.s_title.grid(row=0, column=0, sticky="w", pady=(0, 8))
+        self.s_tree = self._make_tree(right, ("fach", "n"), ("", "Teilnehmer"), (150, 80), parent_grid=(1, 0))
         self._s_sort = ("fach", False)  # (Spalte, absteigend)
         for col in ("fach", "n"):
             self.s_tree.heading(col, command=lambda c=col: self._sort_subjects(c))
@@ -221,26 +270,55 @@ class App(tk.Tk):
         self.summary.pack(anchor="w", pady=(10, 0))
         return f
 
-    def _make_tree(self, parent, cols, heads, widths, parent_grid=None) -> ttk.Treeview:
+    def _make_tree(self, parent, cols, heads, widths, parent_grid=None, hscroll=False) -> ttk.Treeview:
         wrap = ttk.Frame(parent)
         if parent_grid:
             wrap.grid(row=parent_grid[0], column=parent_grid[1], sticky="nsew")
         else:
             wrap.pack(fill="both", expand=True)
+        wrap.rowconfigure(0, weight=1)
+        wrap.columnconfigure(0, weight=1)
         tree = ttk.Treeview(wrap, columns=cols, show="headings", selectmode="browse")
         for c, h, w in zip(cols, heads, widths):
             tree.heading(c, text=h)
             tree.column(c, width=w, anchor="w", stretch=True)
-        sb = ttk.Scrollbar(wrap, orient="vertical", command=tree.yview)
-        tree.configure(yscrollcommand=sb.set)
-        tree.pack(side="left", fill="both", expand=True)
-        sb.pack(side="right", fill="y")
+        vsb = ttk.Scrollbar(wrap, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        if hscroll:
+            hsb = ttk.Scrollbar(wrap, orient="horizontal", command=tree.xview)
+
+            def on_xscroll(lo, hi):  # Leiste nur bei Bedarf zeigen
+                if float(lo) <= 0 and float(hi) >= 1:
+                    hsb.grid_remove()
+                else:
+                    hsb.grid(row=1, column=0, sticky="ew")
+                hsb.set(lo, hi)
+
+            tree.configure(xscrollcommand=on_xscroll)
         return tree
+
+    def _configure_teacher_columns(self) -> None:
+        """Eine Spalte je Eintrag; so viele, wie eine Lehrkraft maximal hat."""
+        lb = self.labels
+        n = max((len(v) for v in self.teachers.values()), default=1) or 1
+        self._n_items = n
+        cols = ("chk", "name", *[f"i{k}" for k in range(n)])
+        t = self.t_tree
+        t.configure(columns=cols, displaycolumns=cols)
+        t.heading("chk", text="")
+        t.column("chk", width=36, minwidth=36, stretch=False, anchor="center")
+        t.heading("name", text="Lehrer*in")
+        t.column("name", width=170, minwidth=120, stretch=False, anchor="w")
+        for k in range(n):
+            t.heading(f"i{k}", text=f"{lb.event} {k + 1}")
+            t.column(f"i{k}", width=ITEM_MIN_WIDTH + 10, minwidth=ITEM_MIN_WIDTH, stretch=True, anchor="w")
 
     def _row_values(self, name: str) -> tuple[tuple, tuple]:
         subjects = self.teachers[name]
-        cells = [("✗ " if (name, s) in self.disabled else "✓ ") + s for s in subjects[:4]]
-        cells += [""] * (4 - len(cells))
+        cells = [("✗ " if (name, s) in self.disabled else "✓ ") + s for s in subjects]
+        cells += [""] * (self._n_items - len(cells))
         tags = []
         if name in self.excluded:
             tags.append("excluded")
@@ -273,8 +351,9 @@ class App(tk.Tk):
         self._refresh_subjects()
 
     def _refresh_subjects(self) -> None:
+        lb = self.labels
         active = self._active_teachers()
-        problem = problem_from_teachers(active)
+        problem = problem_from_teachers(active, lb)
         col, desc = self._s_sort
         rows = sorted(
             ((fach, len(members)) for fach, members in problem.events.items()),
@@ -287,14 +366,14 @@ class App(tk.Tk):
         self.s_tree.delete(*self.s_tree.get_children())
         for row in rows:
             self.s_tree.insert("", "end", values=row)
-        for c, title in (("fach", "Fach"), ("n", "Teilnehmer")):
+        for c, title in (("fach", lb.event), ("n", "Teilnehmer")):
             arrow = (" ▼" if desc else " ▲") if c == col else ""
             self.s_tree.heading(c, text=title + arrow)
         entries = sum(len(v) for v in active.values())
         n_active = len(self.teachers) - len(self.excluded)
         self.summary.configure(
-            text=f"{n_active} von {len(self.teachers)} Lehrer*innen aktiv · {len(problem.events)} Fächer · {entries} Teilnahmen"
-            + (f" · {len(self.disabled)} Fächer abgewählt" if self.disabled else "")
+            text=f"{n_active} von {len(self.teachers)} Lehrer*innen aktiv · {len(problem.events)} {lb.event_plural} · {entries} Teilnahmen"
+            + (f" · {len(self.disabled)} Einträge abgewählt" if self.disabled else "")
         )
 
     def _on_tree_click(self, event) -> None:
@@ -366,6 +445,23 @@ class App(tk.Tk):
         self.limit_spin = ttk.Spinbox(row, from_=1, to=50, textvariable=self.max_slots, width=5, state="disabled")
         self.limit_spin.pack(side="left", padx=10)
 
+        self.use_parallel = tk.BooleanVar(value=False)
+        self.max_parallel = tk.IntVar(value=3)
+        row = ttk.Frame(form)
+        row.pack(anchor="w", pady=6)
+        ttk.Checkbutton(row, text="Höchstens so viele Konferenzen gleichzeitig:",
+                        variable=self.use_parallel, command=self._parallel_toggled).pack(side="left")
+        self.parallel_spin = ttk.Spinbox(row, from_=1, to=200, textvariable=self.max_parallel, width=5,
+                                         state="disabled")
+        self.parallel_spin.pack(side="left", padx=10)
+        ttk.Label(
+            form,
+            text="Ohne Haken finden beliebig viele Konferenzen gleichzeitig statt. Eine Begrenzung ist sinnvoll,\n"
+                 "wenn z. B. nur eine bestimmte Zahl an Räumen oder Moderator*innen zur Verfügung steht.",
+            foreground="gray",
+            justify="left",
+        ).pack(anchor="w", pady=(0, 4))
+
         self.objective = tk.StringVar(value="teilnehmer")
         ttk.Label(form, text="Falls die Obergrenze nicht reicht, minimiere …").pack(anchor="w", pady=(16, 4))
         ttk.Radiobutton(form, text="die Anzahl der Lehrer*innen, die Konferenzen verpassen",
@@ -376,7 +472,7 @@ class App(tk.Tk):
         row = ttk.Frame(form)
         row.pack(anchor="w", pady=(16, 0))
         ttk.Label(row, text="Zeitlimit (Sekunden):").pack(side="left")
-        self.time_limit = tk.IntVar(value=30)
+        self.time_limit = tk.IntVar(value=180)
         ttk.Spinbox(row, from_=1, to=3600, textvariable=self.time_limit, width=6).pack(side="left", padx=10)
         ttk.Label(
             form,
@@ -389,7 +485,20 @@ class App(tk.Tk):
             justify="left",
         ).pack(anchor="w", pady=(4, 0))
 
-        self.progress = ttk.Progressbar(f, mode="indeterminate", length=360)
+        self.run_box = ttk.Frame(f)
+        top = ttk.Frame(self.run_box)
+        top.pack(anchor="w")
+        self.progress = ttk.Progressbar(top, mode="indeterminate", length=360)
+        self.progress.pack(side="left")
+        self.timer_label = ttk.Label(top, text="00:00", font=("Segoe UI", 11, "bold"), width=6, anchor="e")
+        self.timer_label.pack(side="left", padx=(14, 0))
+        buttons = ttk.Frame(self.run_box)
+        buttons.pack(anchor="w", pady=(12, 0))
+        self.btn_stop = ttk.Button(buttons, text="Stoppen und aktuell bestes Ergebnis übernehmen",
+                                   command=self.stop_solve)
+        self.btn_stop.pack(side="left")
+        self.btn_cancel = ttk.Button(buttons, text="Abbrechen", command=self.cancel_solve)
+        self.btn_cancel.pack(side="left", padx=(10, 0))
         self.solve_msg = ttk.Label(f, text="", foreground="gray")
         self.solve_msg.pack(anchor="w", pady=(20, 8))
         return f
@@ -397,30 +506,71 @@ class App(tk.Tk):
     def _limit_toggled(self) -> None:
         self.limit_spin.configure(state="normal" if self.use_limit.get() else "disabled")
 
+    def _parallel_toggled(self) -> None:
+        self.parallel_spin.configure(state="normal" if self.use_parallel.get() else "disabled")
+
+    def _tick(self) -> None:
+        """Aktualisiert die Laufzeitanzeige (mm:ss) solange die Berechnung laeuft."""
+        if not self._busy:
+            return
+        minutes, seconds = divmod(int(time.monotonic() - self._t0), 60)
+        self.timer_label.configure(text=f"{minutes:02d}:{seconds:02d}")
+        self._timer_job = self.after(250, self._tick)
+
+    def cancel_solve(self) -> None:
+        if not self._busy or self._cancel is None:
+            return
+        self._cancel.cancel()
+        self._lock_run_buttons("Breche ab …")
+
+    def stop_solve(self) -> None:
+        if not self._busy or self._cancel is None:
+            return
+        self._cancel.stop()
+        self._lock_run_buttons("Stoppe und übernehme aktuell bestes Ergebnis …")
+
+    def _lock_run_buttons(self, message: str) -> None:
+        self.btn_cancel.state(["disabled"])
+        self.btn_stop.state(["disabled"])
+        self.solve_msg.configure(text=message)
+
     def start_solve(self) -> None:
         try:
             max_slots = int(self.max_slots.get()) if self.use_limit.get() else None
+            max_parallel = int(self.max_parallel.get()) if self.use_parallel.get() else None
             limit = float(self.time_limit.get())
         except (tk.TclError, ValueError):
             messagebox.showerror("Eingabe", "Bitte gültige Zahlen eingeben.")
             return
-        if (max_slots is not None and max_slots < 1) or limit < 1:
+        if (max_slots is not None and max_slots < 1) or (max_parallel is not None and max_parallel < 1) or limit < 1:
             messagebox.showerror("Eingabe", "Werte müssen mindestens 1 sein.")
             return
-        problem = problem_from_teachers(self._active_teachers())
+        lb = self.labels
+        problem = problem_from_teachers(self._active_teachers(), lb)
         if not problem.events:
-            messagebox.showwarning("Keine Fächer", "Es sind keine Fächer ausgewählt.")
+            messagebox.showwarning(f"Keine {lb.event_plural}", f"Es sind keine {lb.event_plural} ausgewählt.")
             return
         self._busy = True
+        self._cancel = cancel = CancelToken()
         self.show_step(2)
-        self.progress.pack(anchor="w", before=self.solve_msg)
+        self.status.configure(text="")
+        self.run_box.pack(anchor="w", before=self.solve_msg)
+        self.btn_cancel.state(["!disabled"])
+        self.btn_stop.state(["!disabled"])
         self.progress.start(12)
         self.solve_msg.configure(text="Berechne optimalen Plan …")
+        self._t0 = time.monotonic()
+        self.timer_label.configure(text="00:00")
+        self._tick()
         objective = self.objective.get()
 
         def work() -> None:
             try:
-                self._queue.put(("ok", solve(problem, "cpsat", max_slots, objective, limit)))
+                self._queue.put(("ok", solve(problem, "cpsat", max_slots, objective, limit, max_parallel, cancel)))
+            except Cancelled:
+                self._queue.put(("cancelled", None))
+            except ValueError as exc:  # Einstellungen passen nicht zusammen
+                self._queue.put(("invalid", exc))
             except Exception as exc:  # an GUI weiterreichen
                 self._queue.put(("err", exc))
 
@@ -434,12 +584,21 @@ class App(tk.Tk):
             self.after(100, self._poll)
             return
         self._busy = False
+        self._cancel = None
+        if self._timer_job:
+            self.after_cancel(self._timer_job)
+            self._timer_job = None
         self.progress.stop()
-        self.progress.pack_forget()
+        self.run_box.pack_forget()
         self.solve_msg.configure(text="")
-        if kind == "err":
+        if kind == "cancelled":
             self.show_step(2)
-            messagebox.showerror("Berechnung fehlgeschlagen", str(payload))
+            self.status.configure(text="Berechnung abgebrochen.")
+            return
+        if kind != "ok":
+            self.show_step(2)
+            title = "Einstellungen prüfen" if kind == "invalid" else "Berechnung fehlgeschlagen"
+            messagebox.showerror(title, str(payload))
             return
         self.schedule = payload
         self.show_step(3)
@@ -470,7 +629,7 @@ class App(tk.Tk):
         self.res_pane.rowconfigure(0, weight=1)
         left = ttk.Frame(self.res_pane)
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 16))
-        slot_tree = self._make_tree(left, ("slot", "faecher"), ("Slot", "Fächer (parallel)"), (60, 300))
+        slot_tree = self._make_tree(left, ("slot", "faecher"), ("Slot", self.slot_head), (60, 300))
         for i, evs in enumerate(s.slots, 1):
             slot_tree.insert("", "end", values=(i, ", ".join(evs)))
         right = ttk.Frame(self.res_pane)
@@ -478,7 +637,12 @@ class App(tk.Tk):
         n = len(s.slots)
         cols = ("name", *[f"s{i}" for i in range(n)], "gap", "miss")
         heads = ("Lehrer*in", *[f"Slot {i + 1}" for i in range(n)], "Leerlauf", "Verpasst")
-        tree = self._make_tree(right, cols, heads, (140, *[90] * n, 70, 120))
+        tree = self._make_tree(right, cols, heads, (140, *[90] * n, 70, 120), hscroll=True)
+        tree.column("name", minwidth=120, stretch=False)
+        for i in range(n):
+            tree.column(f"s{i}", minwidth=90)
+        tree.column("gap", minwidth=70)
+        tree.column("miss", minwidth=100)
         tree.tag_configure("missed", foreground=ERR)
         for r in s.reports:
             cells = ["/".join(r.slots.get(i, [])) or "–" for i in range(n)]

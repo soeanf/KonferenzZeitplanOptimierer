@@ -1,4 +1,4 @@
-"""Generisches Modell: Ereignisse (Faecher/Klassen) mit Teilnehmern (Lehrern)."""
+"""Generisches Modell: Ereignisse (Fach, Klasse, Jahrgang, Kurs) mit Teilnehmern (Lehrern)."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 class Labels:
     event: str = "Fach"
     participant: str = "Lehrer*innen"
+    event_plural: str = "Fächer"
 
 
 @dataclass
