@@ -10,15 +10,16 @@ from .core.model import Schedule
 from .core.solver_heur import OBJECTIVES, solve_heuristic
 
 
-def solve(problem, solver: str, max_slots, objective, time_limit, max_parallel=None) -> Schedule:
+def solve(problem, solver: str, max_slots, objective, time_limit, max_parallel=None, cancel=None) -> Schedule:
     if solver == "cpsat":
         try:
             from .core.solver_cpsat import solve_cpsat
         except ImportError:
             print("OR-Tools fehlt, verwende Heuristik.", file=sys.stderr)
         else:
-            return solve_cpsat(problem, max_slots, objective, time_limit, max_parallel=max_parallel)
-    return solve_heuristic(problem, max_slots, objective, time_limit, max_parallel=max_parallel)
+            return solve_cpsat(problem, max_slots, objective, time_limit,
+                               max_parallel=max_parallel, cancel=cancel)
+    return solve_heuristic(problem, max_slots, objective, time_limit, max_parallel=max_parallel, cancel=cancel)
 
 
 def render(s: Schedule) -> str:

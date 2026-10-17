@@ -4,12 +4,14 @@ from __future__ import annotations
 import queue
 import sys
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from ..adapters.teacher_subjects import PRESETS, problem_from_teachers, read_teachers
 from ..cli import export, solve
+from ..core.cancel import Cancelled, CancelToken
 from ..core.model import Labels, Schedule
 
 try:
@@ -47,6 +49,9 @@ class App(tk.Tk):
         self.step = 0
         self._queue: queue.Queue = queue.Queue()
         self._busy = False
+        self._cancel: CancelToken | None = None
+        self._t0 = 0.0
+        self._timer_job: str | None = None
 
         self._build_chrome()
         self._pages = [self._page_load(), self._page_review(), self._page_solve(), self._page_result()]
@@ -480,7 +485,20 @@ class App(tk.Tk):
             justify="left",
         ).pack(anchor="w", pady=(4, 0))
 
-        self.progress = ttk.Progressbar(f, mode="indeterminate", length=360)
+        self.run_box = ttk.Frame(f)
+        top = ttk.Frame(self.run_box)
+        top.pack(anchor="w")
+        self.progress = ttk.Progressbar(top, mode="indeterminate", length=360)
+        self.progress.pack(side="left")
+        self.timer_label = ttk.Label(top, text="00:00", font=("Segoe UI", 11, "bold"), width=6, anchor="e")
+        self.timer_label.pack(side="left", padx=(14, 0))
+        buttons = ttk.Frame(self.run_box)
+        buttons.pack(anchor="w", pady=(12, 0))
+        self.btn_stop = ttk.Button(buttons, text="Stoppen und aktuell bestes Ergebnis übernehmen",
+                                   command=self.stop_solve)
+        self.btn_stop.pack(side="left")
+        self.btn_cancel = ttk.Button(buttons, text="Abbrechen", command=self.cancel_solve)
+        self.btn_cancel.pack(side="left", padx=(10, 0))
         self.solve_msg = ttk.Label(f, text="", foreground="gray")
         self.solve_msg.pack(anchor="w", pady=(20, 8))
         return f
@@ -490,6 +508,31 @@ class App(tk.Tk):
 
     def _parallel_toggled(self) -> None:
         self.parallel_spin.configure(state="normal" if self.use_parallel.get() else "disabled")
+
+    def _tick(self) -> None:
+        """Aktualisiert die Laufzeitanzeige (mm:ss) solange die Berechnung laeuft."""
+        if not self._busy:
+            return
+        minutes, seconds = divmod(int(time.monotonic() - self._t0), 60)
+        self.timer_label.configure(text=f"{minutes:02d}:{seconds:02d}")
+        self._timer_job = self.after(250, self._tick)
+
+    def cancel_solve(self) -> None:
+        if not self._busy or self._cancel is None:
+            return
+        self._cancel.cancel()
+        self._lock_run_buttons("Breche ab …")
+
+    def stop_solve(self) -> None:
+        if not self._busy or self._cancel is None:
+            return
+        self._cancel.stop()
+        self._lock_run_buttons("Stoppe und übernehme aktuell bestes Ergebnis …")
+
+    def _lock_run_buttons(self, message: str) -> None:
+        self.btn_cancel.state(["disabled"])
+        self.btn_stop.state(["disabled"])
+        self.solve_msg.configure(text=message)
 
     def start_solve(self) -> None:
         try:
@@ -508,15 +551,24 @@ class App(tk.Tk):
             messagebox.showwarning(f"Keine {lb.event_plural}", f"Es sind keine {lb.event_plural} ausgewählt.")
             return
         self._busy = True
+        self._cancel = cancel = CancelToken()
         self.show_step(2)
-        self.progress.pack(anchor="w", before=self.solve_msg)
+        self.status.configure(text="")
+        self.run_box.pack(anchor="w", before=self.solve_msg)
+        self.btn_cancel.state(["!disabled"])
+        self.btn_stop.state(["!disabled"])
         self.progress.start(12)
         self.solve_msg.configure(text="Berechne optimalen Plan …")
+        self._t0 = time.monotonic()
+        self.timer_label.configure(text="00:00")
+        self._tick()
         objective = self.objective.get()
 
         def work() -> None:
             try:
-                self._queue.put(("ok", solve(problem, "cpsat", max_slots, objective, limit, max_parallel)))
+                self._queue.put(("ok", solve(problem, "cpsat", max_slots, objective, limit, max_parallel, cancel)))
+            except Cancelled:
+                self._queue.put(("cancelled", None))
             except ValueError as exc:  # Einstellungen passen nicht zusammen
                 self._queue.put(("invalid", exc))
             except Exception as exc:  # an GUI weiterreichen
@@ -532,9 +584,17 @@ class App(tk.Tk):
             self.after(100, self._poll)
             return
         self._busy = False
+        self._cancel = None
+        if self._timer_job:
+            self.after_cancel(self._timer_job)
+            self._timer_job = None
         self.progress.stop()
-        self.progress.pack_forget()
+        self.run_box.pack_forget()
         self.solve_msg.configure(text="")
+        if kind == "cancelled":
+            self.show_step(2)
+            self.status.configure(text="Berechnung abgebrochen.")
+            return
         if kind != "ok":
             self.show_step(2)
             title = "Einstellungen prüfen" if kind == "invalid" else "Berechnung fehlgeschlagen"

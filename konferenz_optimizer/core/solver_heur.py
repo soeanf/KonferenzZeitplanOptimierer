@@ -5,9 +5,30 @@ import math
 import random
 import time
 
+from .cancel import CancelToken
 from .model import Problem, Schedule, evaluate
 
 OBJECTIVES = ("teilnehmer", "verpasst")
+STOPPED = "vorzeitig gestoppt: aktuell bestes Ergebnis (nicht als optimal bewiesen)"
+
+
+def greedy_slots(problem: Problem, n_slots: int, max_parallel: int | None) -> list[list[str]]:
+    """Schnell erzeugter, gueltiger Plan: jedes Ereignis in den Slot mit den wenigsten Ueberschneidungen.
+
+    Dient als Ersatz, wenn der Benutzer stoppt, bevor der Solver einen ersten Plan hatte.
+    """
+    cap = max_parallel if max_parallel is not None else len(problem.events)
+    graph = problem.conflict_graph()
+    slots: list[list[str]] = [[] for _ in range(n_slots)]
+    for event in sorted(problem.events, key=lambda e: (-len(graph[e]), e)):
+        mine = problem.events[event]
+        candidates = [s for s in range(n_slots) if len(slots[s]) < cap]
+        best = min(
+            candidates,
+            key=lambda s: (sum(len(mine & problem.events[o]) for o in slots[s]), len(slots[s]), s),
+        )
+        slots[best].append(event)
+    return slots
 
 
 def dsatur(graph: dict[str, set[str]], capacity: int | None = None) -> dict[str, int]:
@@ -58,6 +79,7 @@ def solve_heuristic(
     time_limit: float = 10.0,
     seed: int = 0,
     max_parallel: int | None = None,
+    cancel: CancelToken | None = None,
 ) -> Schedule:
     events = sorted(problem.events)
     if not events:
@@ -101,7 +123,13 @@ def solve_heuristic(
     best, best_assign = cur, assign[:]
     temp = max(1.0, w_slots / 2)
     deadline = time.monotonic() + time_limit
+    stopped = False
     while time.monotonic() < deadline:
+        if cancel:
+            cancel.raise_if_cancelled()
+            if cancel.stop_requested:
+                stopped = True
+                break
         a = rng.randrange(len(events))
         old = assign[a]
         if rng.random() < 0.5 and len(events) > 1:
@@ -130,4 +158,4 @@ def solve_heuristic(
     slots: list[list[str]] = [[] for _ in range(n_slots)]
     for e, s in zip(events, best_assign):
         slots[s].append(e)
-    return evaluate(problem, slots, "heuristisch (nicht als optimal bewiesen)")
+    return evaluate(problem, slots, STOPPED if stopped else "heuristisch (nicht als optimal bewiesen)")
